@@ -1,0 +1,102 @@
+{
+  "timestamp": "2025-02-12T12:20:59.595Z",
+  "campus": "319",
+  "group": "210845",
+  "semester": "s1",
+  "queries": {
+    "GROUPE": {
+      "query": "SELECT * FROM GROUPE WHERE CODE_GROUPE = 210845",
+      "results": [
+        {
+          "CODE_GROUPE": "210845",
+          "CODE_MODE_EVAL_FORMATION": null,
+          "NOMENCL_SPECIALITE_FORMATION": null,
+          "CODE_TYPE_COURS": null,
+          "CODE_SITE": "319",
+          "CODE_PERSONNEL": "438",
+          "CODE_OBSERVATION": null,
+          "CODE_OBSERVATION_EVAL_GROUPE": null,
+          "CODE_STE_FACTURATION": "1",
+          "CODE_FORMATION": "39",
+          "CODE_NATURE_ACTION_FORMATION": null,
+          "CODE_OBSERVATION_FACTURE": null,
+          "NOMENCL_TYPE_CONVENTION": null,
+          "CODE_CALENDRIER": "639",
+          "CODE_PERSONNEL_GESTIONNAIRE": "524",
+          "NOM_GROUPE": "P-BG1 TP 2 Rentrée décalée",
+          "IS_FORMATION_LONGUE": "1",
+          "IS_MODULAIRE": "0",
+          "IS_APPRENTISSAGE": "1",
+          "IS_ALTERNANCE": "1",
+          "IS_SCOLAIRE": "0",
+          "IS_FC": "0",
+          "IS_SALLE_EXTERIEURE": "0",
+          "IS_BP": "0",
+          "IS_PLAN_COMPLEXE": "1",
+          "ABREGE_GROUPE": "",
+          "ETENDU_GROUPE": "Bachelor gestionnaire d’affaires immobilières 1ère année",
+          "NB_APPRENANT": "40",
+          "NUM_ORDRE": null,
+          "ETAT_FACTURE": "244",
+          "DUREE_HEURES": null,
+          "DUREE_JOURS": null,
+          "VERROU_UTILISATEUR": null,
+          "PRIX_VENTE": "10000",
+          "UNITE_FACTURATION": "170",
+          "ENSEMBLE_FINANCE": "182",
+          "TYPE_SOUS_TRAITE": "190",
+          "CODE_COMPTE": "8",
+          "CODE_COMPTE_SERVICE": "111",
+          "CODE_COMPTE_ANALYTIQUE": "103",
+          "CODE_SITE_FORMATION": "319",
+          "SECTION_CONV_IDF": null,
+          "COUT_FORMATION": null,
+          "NUMERO_ANNEE": "1",
+          "NUM_ORDRE_EDT": null,
+          "CODE_GROUPE_SESSION_PREC": null,
+          "COEF_PROF": null,
+          "EFFECTIF_MINI": "0",
+          "DATE_CREATION": "2024-01-19 00:00:00",
+          "DATE_MODIFICATION": "2024-12-10 18:02:00",
+          "NOM_ACTION_FORMATION": null,
+          "NUM_MARCHE": null
+        }
+      ]
+    },
+    "INSCRIPTIONS": {
+      "query": "SELECT CODE_APPRENANT FROM INSCRIPTION WHERE CODE_GROUPE = 210845",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    },
+    "APPRENANT": {
+      "query": "SELECT CODE_APPRENANT, NOM_APPRENANT, PRENOM_APPRENANT, DATE_NAISSANCE FROM APPRENANT WHERE CODE_APPRENANT IN (SELECT CODE_APPRENANT FROM INSCRIPTION WHERE CODE_GROUPE = 210845)",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    },
+    "MATIERES_CODES": {
+      "query": "SELECT DISTINCT CODE_MATIERE FROM EVALUATION WHERE CODE_GROUPE = 210845",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    },
+    "MATIERE": {
+      "query": "SELECT CODE_MATIERE, NOM_MATIERE FROM MATIERE WHERE CODE_MATIERE IN (SELECT DISTINCT CODE_MATIERE FROM EVALUATION WHERE CODE_GROUPE = 210845)",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    },
+    "EVALUATIONS": {
+      "query": "SELECT CODE_EVALUATION FROM EVALUATION WHERE CODE_GROUPE = 210845",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    },
+    "NOTES_SIMPLES": {
+      "query": "SELECT n.CODE_NOTE, n.VALEUR_NOTE, n.CODE_APPRENANT FROM NOTE n WHERE n.CODE_EVALUATION IN (SELECT CODE_EVALUATION FROM EVALUATION WHERE CODE_GROUPE = 210845)",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    },
+    "NOTE": {
+      "query": "SELECT n.CODE_NOTE, n.VALEUR_NOTE, a.NOM_APPRENANT, a.PRENOM_APPRENANT, m.NOM_MATIERE FROM NOTE n INNER JOIN EVALUATION e ON n.CODE_EVALUATION = e.CODE_EVALUATION INNER JOIN APPRENANT a ON n.CODE_APPRENANT = a.CODE_APPRENANT INNER JOIN MATIERE m ON e.CODE_MATIERE = m.CODE_MATIERE WHERE e.CODE_GROUPE = 210845",
+      "results": [],
+      "error": "HTTP error! status: 500 - {\"message\":\"Erreur SQL (DBException)\",\"code\":0}"
+    }
+  }
+}
