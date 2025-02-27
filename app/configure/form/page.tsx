@@ -48,14 +48,10 @@ const formSchema = z.object({
   }),
 });
 
-const semesters = [
-  { id: "s1", label: "ALT Semestre 1" },
-  { id: "s2", label: "ALT Semestre 2" },
-  { id: "s3", label: "TP Semestre 1" },
-  { id: "s4", label: "TP Semestre 2" },
-  { id: "s5", label: "TP Semestre 1 section internationale" },
-  { id: "s6", label: "TP Semestre 2 section internationale" },
-] as const;
+interface PeriodeEvaluation {
+  CODE_PERIODE_EVALUATION: string;
+  NOM_PERIODE_EVALUATION: string;
+}
 
 interface YpareoStudent {
   inscriptions: Array<{
@@ -69,7 +65,7 @@ interface YpareoStudent {
 
 interface YpareoGroup {
   codeGroupe: number;
-  etenduGroupe: string;
+  nomGroupe: string;
   codeSite: number;
 }
 
@@ -91,13 +87,14 @@ interface QueryResults {
   GROUPE: YpareoGroup[];
   SITE: Campus[];
   NOTE: string[];
-  PERIODE_EVALUATION: unknown[];
+  PERIODE_EVALUATION: PeriodeEvaluation[];
 }
 
 export default function Home() {
   const { data: session } = useSession();
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [periods, setPeriods] = useState<PeriodeEvaluation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [allGroups, setAllGroups] = useState<YpareoGroup[]>([]);
@@ -186,6 +183,69 @@ export default function Home() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+
+        // Récupération des périodes d'évaluation
+        const periodsResponse = await fetch("/api/periods");
+        if (!periodsResponse.ok) {
+          throw new Error("Erreur lors de la récupération des périodes d'évaluation");
+        }
+
+        const periodsData = await periodsResponse.json();
+        if (periodsData.success && Array.isArray(periodsData.data)) {
+          setPeriods(periodsData.data);
+        } else {
+          console.error("Format de données des périodes invalide:", periodsData);
+          setPeriods([]);
+        }
+
+        const studentsResponse = await fetch("/api/students");
+        if (!studentsResponse.ok) throw new Error("Erreur lors de la récupération des étudiants");
+        const studentsData = await studentsResponse.json();
+
+        const groupsResponse = await fetch("/api/groups");
+        if (!groupsResponse.ok) throw new Error("Erreur lors de la récupération des groupes");
+        const groupsData = await groupsResponse.json();
+
+        const studentsArray = Object.values(studentsData) as YpareoStudent[];
+        const groupsArray = Object.values(groupsData) as YpareoGroup[];
+
+        setAllGroups(groupsArray);
+
+        const uniqueCampusMap = new Map<number, string>();
+        studentsArray.forEach((student) => {
+          student.inscriptions.forEach((inscription) => {
+            if (!uniqueCampusMap.has(inscription.site.codeSite)) {
+              uniqueCampusMap.set(inscription.site.codeSite, inscription.site.nomSite);
+            }
+          });
+        });
+
+        const uniqueCampuses: Campus[] = Array.from(uniqueCampusMap).map(
+          ([codeSite, nomSite], index) => ({
+            id: `campus-${codeSite}-${index}`,
+            codeSite: codeSite,
+            label: nomSite,
+          })
+        );
+
+        setCampuses(uniqueCampuses);
+      } catch (error) {
+        console.error("Erreur:", error);
+        setErrorMessage("Erreur lors du chargement des données initiales");
+        setShowErrorModal(true);
+        setPeriods([]); // Initialiser avec un tableau vide en cas d'erreur
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   const updateGroups = (campusId: string) => {
     const selectedCampus = campuses.find((campus) => campus.id === campusId);
     if (!selectedCampus) return;
@@ -194,7 +254,7 @@ export default function Home() {
       .filter((group) => group.codeSite === selectedCampus.codeSite)
       .map((group) => ({
         id: group.codeGroupe,
-        label: group.etenduGroupe,
+        label: group.nomGroupe,
       }));
     setGroups(filteredGroups);
   };
@@ -206,6 +266,10 @@ export default function Home() {
       const selectedCampus = campuses.find((campus) => campus.id === values.campus);
       if (!selectedCampus) throw new Error("Campus non trouvé");
 
+      // Récupérer la période d'évaluation (Nom et Code)
+      const selectedPeriod = periods.find((p) => p.CODE_PERIODE_EVALUATION === values.semester);
+      if (!selectedPeriod) throw new Error("Période d'évaluation non trouvée");
+
       const response = await fetch("/api/sql", {
         method: "POST",
         headers: {
@@ -215,6 +279,7 @@ export default function Home() {
           campus: selectedCampus.codeSite,
           group: values.group,
           semester: values.semester,
+          periodeEvaluation: selectedPeriod.NOM_PERIODE_EVALUATION, // ✅ Ajout du NOM
         }),
       });
 
@@ -224,10 +289,10 @@ export default function Home() {
         throw new Error(data.error || "Erreur lors de la récupération des données");
       }
 
-      console.log("Données récupérées:", data);
+      console.log("✅ Données récupérées:", data);
       setShowSuccessModal(true);
     } catch (error: any) {
-      console.error("Erreur lors de la soumission:", error);
+      console.error("❌ Erreur lors de la soumission:", error);
       setErrorMessage(error.message || "Une erreur est survenue");
       setShowErrorModal(true);
     } finally {
@@ -352,18 +417,22 @@ export default function Home() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-lg font-semibold text-gray-700">
-                        Semestres
+                        Période d&apos;évaluation
                       </FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-12 text-lg border-2 focus:border-[#0a5d81]">
-                            <SelectValue placeholder="Sélectionnez un semestre" />
+                            <SelectValue placeholder="Sélectionnez une période" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {semesters.map((semester) => (
-                            <SelectItem key={semester.id} value={semester.id} className="text-base">
-                              {semester.label}
+                          {periods.map((period) => (
+                            <SelectItem
+                              key={period.CODE_PERIODE_EVALUATION}
+                              value={period.CODE_PERIODE_EVALUATION}
+                              className="text-base"
+                            >
+                              {period.NOM_PERIODE_EVALUATION}
                             </SelectItem>
                           ))}
                         </SelectContent>
