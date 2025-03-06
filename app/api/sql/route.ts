@@ -22,7 +22,6 @@ interface QueryResults {
   SITE: any[];
   APPRENANT: any[];
   ABSENCE: any[];
-  STATISTIQUES: any[];
   MATIERE: any[];
   MOYENNES_UE: any[];
   MOYENNE_GENERALE: any[];
@@ -89,10 +88,19 @@ export async function POST(request: Request) {
 
     const campus = body.campus;
     const group = body.group;
-    const periodeEvaluation = body.periodeEvaluation;
+    const periodeEvaluationCode = body.periodeEvaluationCode; // Récupérer le code directement
+    const periodeEvaluation = body.periodeEvaluation; // Le nom de la période
     const semester = body.semester?.toString() || "s1";
 
-    console.log("Paramètres extraits:", { campus, group, semester });
+    console.log("Paramètres extraits:", {
+      campus,
+      group,
+      periodeEvaluationCode,
+      periodeEvaluation,
+      semester,
+    });
+
+    console.log("Paramètres extraits:", { campus, group, periodeEvaluation, semester });
 
     if (!campus || !group || !periodeEvaluation) {
       console.error("Paramètres manquants:", { campus, group, periodeEvaluation });
@@ -105,11 +113,13 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log("🔍 Période sélectionnée :", periodeEvaluation);
+
     const token =
       "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpYXQiOjE3MjA0NzYwMDAsImNsdCI6IjNFREI0QUU3LTlGNDEtNDM4QS1CRDE1LTQ1Rjk3MEVEQ0VCOSJ9.q8i-pDiwdf4Zlja-bd9keZTD0IIeJOrKDl8PGai9mPE";
 
     // Étape 1️⃣ : Récupérer le NOM_GROUPE à partir du CODE_GROUPE
-    const groupQuery = `SELECT NOM_GROUPE FROM GROUPE WHERE CODE_GROUPE = ${group}`;
+    const groupQuery = `SELECT NOM_GROUPE, NUMERO_ANNEE, CODE_FORMATION FROM GROUPE WHERE CODE_GROUPE = ${group}`;
     const groupResults = await executeQuery(groupQuery, token);
 
     if (!groupResults.length) {
@@ -124,163 +134,110 @@ export async function POST(request: Request) {
     }
 
     const nomGroupe = groupResults[0].NOM_GROUPE; // Extraction du NOM_GROUPE
+    const groupNumQuery = groupResults[0].NUMERO_ANNEE; // Extraction du NUMERO_ANNEE
+    const codeFormation = groupResults[0].CODE_FORMATION;
 
-    console.log("✅ NOM_GROUPE récupéré:", nomGroupe);
+    // Ajoutez ce code ici
+    let codeAnnee = groupNumQuery;
+    if (groupNumQuery === 3) {
+      codeAnnee = 4;
+    }
+    console.log("NUMERO_ANNEE:", groupNumQuery);
+    console.log("CODE_ANNEE ajusté:", codeAnnee);
+
+    // Étape 2️⃣ : Récupérer le CODE_PERIODE_EVALUATION approprié
+
+    // Si periodeEvaluationCode est fourni par le frontend, on peut l'utiliser directement
+    let cdeval;
+    if (periodeEvaluationCode) {
+      cdeval = periodeEvaluationCode;
+      console.log("✅ Utilisation du CODE_PERIODE_EVALUATION fourni:", cdeval);
+    } else {
+      // Sinon, on cherche à le récupérer comme avant
+      const codeEvalQuery = `SELECT DISTINCT r.CODE_PERIODE_EVALUATION FROM REFERENTIEL r WHERE r.CODE_FORMATION = ${codeFormation} AND r.CODE_SESSION = 4 AND r.CODE_ANNEE = ${codeAnnee}`;
+
+      const codeEvalResults = await executeQuery(codeEvalQuery, token);
+
+      if (!codeEvalResults.length) {
+        console.log(
+          "⚠️ Aucun CODE_PERIODE_EVALUATION trouvé pour ce groupe, utilisation de la valeur par défaut 20"
+        );
+      } else {
+        cdeval = codeEvalResults[0].CODE_PERIODE_EVALUATION;
+      }
+    }
+
+    console.log("🧐 Vérification des paramètres :");
+    console.log("group:", group);
+    console.log("cdeval:", cdeval);
+    console.log("campus:", campus);
+    console.log("groupNumQuery:", groupNumQuery);
+    console.log("periodeEvaluation:", periodeEvaluation);
 
     const queries: Record<keyof QueryResults, string> = {
       GROUPE: `
-        SELECT DISTINCT 
-          g.NOM_GROUPE, 
-          g.ETENDU_GROUPE, 
-          f.NOM_FORMATION
-      FROM GROUPE g
-      INNER JOIN FORMATION f 
-          ON g.CODE_FORMATION = f.CODE_FORMATION
-      INNER JOIN INSCRIPTION i 
-          ON g.CODE_PERSONNEL = i.CODE_PERSONNEL
-          AND i.CODE_FORMATION = f.CODE_FORMATION
-      INNER JOIN SESSION s 
-          ON i.CODE_SESSION = s.CODE_SESSION
-      WHERE g.CODE_GROUPE = ${group}
-      AND s.CODE_SESSION = 4;
+        SELECT DISTINCT g.NOM_GROUPE, g.ETENDU_GROUPE, f.NOM_FORMATION FROM FORMATION f INNER JOIN GROUPE g ON f.CODE_FORMATION = g.CODE_FORMATION INNER JOIN FREQUENTE fr ON g.CODE_GROUPE = fr.CODE_GROUPE INNER JOIN CALENDRIER c ON fr.CODE_CALENDRIER = c.CODE_CALENDRIER INNER JOIN SESSION s ON c.CODE_SESSION = s.CODE_SESSION 
+        WHERE g.CODE_GROUPE = ${group} GROUP BY g.NOM_GROUPE, g.ETENDU_GROUPE, f.NOM_FORMATION, s.CODE_SESSION
       `,
 
       SITE: `
-        SELECT DISTINCT s.*
-        FROM SITE s
+        SELECT DISTINCT s.* FROM SITE s
         WHERE s.CODE_SITE = ${campus}
       `,
 
       APPRENANT: `
-        SELECT DISTINCT 
-          a.CODE_APPRENANT, 
-          a.NOM_APPRENANT, 
-          a.PRENOM_APPRENANT, 
-          a.DATE_NAISSANCE
-      FROM APPRENANT a
-      INNER JOIN INSCRIPTION i 
-          ON a.CODE_APPRENANT = i.CODE_APPRENANT
-      INNER JOIN GROUPE g 
-          ON i.CODE_PERSONNEL = g.CODE_PERSONNEL
-      INNER JOIN SESSION s 
-          ON i.CODE_SESSION = s.CODE_SESSION
-      WHERE g.CODE_GROUPE = ${group}
-      AND s.CODE_SESSION = 4
-      ORDER BY a.NOM_APPRENANT, a.PRENOM_APPRENANT;
+        SELECT DISTINCT a.CODE_APPRENANT, a.NOM_APPRENANT, a.PRENOM_APPRENANT, a.DATE_NAISSANCE, g.CODE_GROUPE, c.CODE_CALENDRIER, s.CODE_SESSION, MAX(t.DATE_CLOTURE_INSCRIPTION) as DATE_CLOTURE_INSCRIPTION FROM APPRENANT a INNER JOIN INSCRIPTION i ON a.CODE_APPRENANT = i.CODE_APPRENANT INNER JOIN FREQUENTE f ON i.CODE_INSCRIPTION = f.CODE_INSCRIPTION INNER JOIN GROUPE g ON f.CODE_GROUPE = g.CODE_GROUPE JOIN CALENDRIER c ON f.CODE_CALENDRIER = c.CODE_CALENDRIER INNER JOIN SESSION s ON c.CODE_SESSION = s.CODE_SESSION LEFT JOIN TEMP_TDB_ASSIDUITE_CAL_APPR t ON a.CODE_APPRENANT = t.CODE_APPRENANT 
+        WHERE g.CODE_GROUPE = ${group} GROUP BY a.CODE_APPRENANT, a.NOM_APPRENANT, a.PRENOM_APPRENANT, a.DATE_NAISSANCE, g.CODE_GROUPE, c.CODE_CALENDRIER, s.CODE_SESSION ORDER BY a.NOM_APPRENANT
       `,
 
       ABSENCE: `
-        SELECT 
-          a.MINUTE_DEB, 
-          a.MINUTE_FIN, 
-          a.IS_RETARD,
-          a.CODE_APPRENANT,
-          a.DATE_DEB,
-          ap.NOM_APPRENANT,
-          ap.PRENOM_APPRENANT
-      FROM ABSENCE a
-      INNER JOIN APPRENANT ap 
-          ON a.CODE_APPRENANT = ap.CODE_APPRENANT
-      INNER JOIN INSCRIPTION i 
-          ON ap.CODE_APPRENANT = i.CODE_APPRENANT
-      INNER JOIN GROUPE g 
-          ON i.CODE_PERSONNEL = g.CODE_PERSONNEL
-      INNER JOIN SESSION s 
-          ON i.CODE_SESSION = s.CODE_SESSION
-      WHERE g.CODE_GROUPE = ${group}
-      AND s.CODE_SESSION = 4
-      ORDER BY a.DATE_DEB DESC, ap.NOM_APPRENANT;
+        SELECT DISTINCT a.CODE_APPRENANT, a.NOM_APPRENANT, a.PRENOM_APPRENANT, g.CODE_GROUPE, abs.CODE_ABSENCE, abs.MINUTE_DEB, abs.MINUTE_FIN, abs.IS_RETARD, abs.DATE_DEB, abs.DATE_FIN, ma.IS_JUSTIFIE, COUNT(abs.CODE_ABSENCE) AS NOMBRE_ABSENCES, SUM(abs.MINUTE_FIN - abs.MINUTE_DEB) AS TOTAL_MINUTES_ABSENCE, s.CODE_SESSION FROM GROUPE g INNER JOIN FREQUENTE f ON g.CODE_GROUPE = f.CODE_GROUPE INNER JOIN INSCRIPTION i ON f.CODE_INSCRIPTION = i.CODE_INSCRIPTION INNER JOIN APPRENANT a ON i.CODE_APPRENANT = a.CODE_APPRENANT INNER JOIN ABSENCE abs ON a.CODE_APPRENANT = abs.CODE_APPRENANT LEFT JOIN MOTIF_ABSENCE ma ON abs.CODE_MOTIF_ABSENCE = ma.CODE_MOTIF_ABSENCE JOIN CALENDRIER c ON f.CODE_CALENDRIER = c.CODE_CALENDRIER INNER JOIN SESSION s ON c.CODE_SESSION = s.CODE_SESSION 
+        WHERE g.CODE_GROUPE = ${group} GROUP BY a.CODE_APPRENANT, a.NOM_APPRENANT, a.PRENOM_APPRENANT, g.CODE_GROUPE, abs.CODE_ABSENCE, abs.MINUTE_DEB, abs.MINUTE_FIN, abs.IS_RETARD, abs.DATE_DEB, abs.DATE_FIN, ma.IS_JUSTIFIE, s.CODE_SESSION ORDER BY a.NOM_APPRENANT
       `,
 
-      STATISTIQUES: `
-      SELECT 
-        (SELECT COUNT(DISTINCT a.CODE_APPRENANT) 
-         FROM APPRENANT a
-         INNER JOIN INSCRIPTION i ON a.CODE_APPRENANT = i.CODE_APPRENANT
-         INNER JOIN GROUPE g ON i.CODE_PERSONNEL = g.CODE_PERSONNEL
-         WHERE g.CODE_GROUPE = ${group}) as total_apprenants,
-        
-        (SELECT COUNT(DISTINCT a.CODE_APPRENANT)
-         FROM ABSENCE abs
-         INNER JOIN APPRENANT a ON abs.CODE_APPRENANT = a.CODE_APPRENANT
-         INNER JOIN INSCRIPTION i ON a.CODE_APPRENANT = i.CODE_APPRENANT
-         INNER JOIN GROUPE g ON i.CODE_PERSONNEL = g.CODE_PERSONNEL
-         WHERE g.CODE_GROUPE = ${group}) as apprenants_avec_absences,
-        
-        (SELECT COUNT(*)
-         FROM ABSENCE abs
-         INNER JOIN APPRENANT a ON abs.CODE_APPRENANT = a.CODE_APPRENANT
-         INNER JOIN INSCRIPTION i ON a.CODE_APPRENANT = i.CODE_APPRENANT
-         INNER JOIN GROUPE g ON i.CODE_PERSONNEL = g.CODE_PERSONNEL
-         WHERE g.CODE_GROUPE = ${group}) as total_absences
-    `,
-
       MATIERE: `
-    SELECT DISTINCT 
-      g.NOM_GROUPE, 
-      pe.NOM_PERIODE_EVALUATION, 
-      m.CODE_MATIERE, 
-      m.NOM_MATIERE, 
-      rd.NUM_ORDRE 
-    FROM SESSION s 
-    JOIN INSCRIPTION i 
-      ON s.CODE_SESSION = i.CODE_SESSION 
-    JOIN GROUPE g 
-      ON i.CODE_PERSONNEL = g.CODE_PERSONNEL 
-    JOIN PERIODE_EVALUATION pe 
-      ON pe.CODE_PERIODICITE_EVALUATION IN (
-        SELECT peval.CODE_PERIODICITE_EVALUATION 
-        FROM PERIODICITE_EVALUATION peval 
-        WHERE peval.CODE_SESSION = s.CODE_SESSION
-      ) 
-    JOIN GROUPE_PERIODE_EVALUATION gpe 
-      ON pe.CODE_PERIODE_EVALUATION = gpe.CODE_PERIODE_EVALUATION 
-    JOIN REFERENTIEL r 
-      ON (
-        SELECT MIN(r_inner.CODE_REFERENTIEL) 
-        FROM REFERENTIEL r_inner 
-        JOIN MOYENNE_PERIODE mp_inner 
-          ON r_inner.CODE_REFERENTIEL = mp_inner.CODE_REFERENTIEL 
-        JOIN INSCRIPTION i_inner 
-          ON mp_inner.CODE_APPRENANT = i_inner.CODE_APPRENANT 
-          AND mp_inner.CODE_SESSION = i_inner.CODE_SESSION 
-        JOIN GROUPE g_inner 
-          ON i_inner.CODE_PERSONNEL = g_inner.CODE_PERSONNEL 
-        JOIN GROUPE_PERIODE_EVALUATION gpe_inner 
-          ON gpe_inner.CODE_GROUPE = g_inner.CODE_GROUPE 
-        WHERE g_inner.NOM_GROUPE = g.NOM_GROUPE 
-          AND gpe_inner.CODE_PERIODE_EVALUATION = pe.CODE_PERIODE_EVALUATION
-      ) = r.CODE_REFERENTIEL 
-    JOIN REFERENTIEL_DETAIL rd 
-      ON r.CODE_REFERENTIEL = rd.CODE_REFERENTIEL 
-    JOIN MATIERE m 
-      ON rd.CODE_MATIERE = m.CODE_MATIERE 
-    WHERE s.CODE_SESSION = 4 
-      AND g.NOM_GROUPE = '${nomGroupe}' 
-      AND pe.NOM_PERIODE_EVALUATION = '${periodeEvaluation}'
-    ORDER BY rd.NUM_ORDRE ASC, pe.NOM_PERIODE_EVALUATION, m.CODE_MATIERE;
-  `,
+        SELECT g.CODE_GROUPE, r.CODE_PERIODE_EVALUATION, pe.NOM_PERIODE_EVALUATION, r.CODE_REFERENTIEL, 
+          m.NOM_MATIERE, rd.NUM_ORDRE, g.CODE_SITE, r.CODE_PERIODE_EVALUATION, rd.NUM_ORDRE, r.CODE_ANNEE 
+        FROM GROUPE g 
+        INNER JOIN REFERENTIEL r ON g.CODE_FORMATION = r.CODE_FORMATION 
+        INNER JOIN REFERENTIEL_DETAIL rd on r.CODE_REFERENTIEL = rd.CODE_REFERENTIEL 
+        INNER JOIN MATIERE m ON rd.CODE_MATIERE = m.CODE_MATIERE 
+        INNER JOIN PERIODE_EVALUATION pe ON r.CODE_PERIODE_EVALUATION = pe.CODE_PERIODE_EVALUATION
+        WHERE g.CODE_GROUPE = ${group} 
+          AND r.CODE_PERIODE_EVALUATION = ${periodeEvaluationCode} 
+          AND pe.NOM_PERIODE_EVALUATION = '${periodeEvaluation}' 
+          AND r.CODE_SESSION = 4 
+          AND g.CODE_SITE = ${campus} 
+          AND (r.CODE_ANNEE = ${groupNumQuery} OR (r.CODE_ANNEE = 4 AND ${groupNumQuery} = 3))
+        ORDER BY rd.NUM_ORDRE ASC, m.NOM_MATIERE
+      `,
+
       MOYENNES_UE: `
         SELECT 
-            g.NOM_GROUPE,
-            ap.NOM_APPRENANT,
-            ap.PRENOM_APPRENANT,
-            m.NOM_MATIERE,
-            mm.MOYENNE
-        FROM MOYENNE_MATIERE_PERIODE mm
-        INNER JOIN APPRENANT ap 
-            ON mm.CODE_APPRENANT = ap.CODE_APPRENANT
-        INNER JOIN INSCRIPTION i 
-            ON ap.CODE_APPRENANT = i.CODE_APPRENANT
-        INNER JOIN GROUPE g 
-            ON mm.CODE_GROUPE = g.CODE_GROUPE
-        INNER JOIN MATIERE m 
-            ON mm.CODE_MATIERE = m.CODE_MATIERE
-        INNER JOIN SESSION s 
-            ON i.CODE_SESSION = s.CODE_SESSION
-        WHERE g.NOM_GROUPE = '${nomGroupe}'
-        AND s.CODE_SESSION = 4
-        ORDER BY ap.NOM_APPRENANT, ap.PRENOM_APPRENANT, m.NOM_MATIERE;
+          g.NOM_GROUPE,
+          ap.NOM_APPRENANT,
+          ap.PRENOM_APPRENANT,
+          m.NOM_MATIERE,
+          mm.MOYENNE,
+          pe.NOM_PERIODE_EVALUATION,
+          ref.NOM_REFERENTIEL
+      FROM MOYENNE_MATIERE_PERIODE mm
+      INNER JOIN APPRENANT ap 
+          ON mm.CODE_APPRENANT = ap.CODE_APPRENANT
+      INNER JOIN GROUPE g 
+          ON mm.CODE_GROUPE = g.CODE_GROUPE
+      INNER JOIN MATIERE m 
+          ON mm.CODE_MATIERE = m.CODE_MATIERE
+      INNER JOIN REFERENTIEL ref
+          ON mm.CODE_REFERENTIEL = ref.CODE_REFERENTIEL
+      INNER JOIN PERIODE_EVALUATION pe
+          ON ref.CODE_PERIODE_EVALUATION = pe.CODE_PERIODE_EVALUATION
+      INNER JOIN FORMATION f
+          ON ref.CODE_FORMATION = f.CODE_FORMATION
+      WHERE g.NOM_GROUPE = '${nomGroupe}'
+      AND pe.NOM_PERIODE_EVALUATION = '${periodeEvaluation}'
+      AND ref.IS_DANS_MOYENNE = '1'
+      ORDER BY ap.NOM_APPRENANT, ap.PRENOM_APPRENANT, m.NOM_MATIERE;
     `,
 
       MOYENNE_GENERALE: `
@@ -299,7 +256,6 @@ export async function POST(request: Request) {
       INNER JOIN SESSION s 
           ON i.CODE_SESSION = s.CODE_SESSION
       WHERE g.NOM_GROUPE = '${nomGroupe}'
-      AND s.CODE_SESSION = 4
       GROUP BY g.NOM_GROUPE, ap.NOM_APPRENANT, ap.PRENOM_APPRENANT
       ORDER BY ap.NOM_APPRENANT, ap.PRENOM_APPRENANT;
   `,
@@ -326,10 +282,12 @@ export async function POST(request: Request) {
   LEFT JOIN MATIERE m 
       ON rd.CODE_MATIERE = m.CODE_MATIERE
   WHERE g.NOM_GROUPE = '${nomGroupe}'
-  AND s.CODE_SESSION = 4
+  AND s.CODE_SESSION = 2
   ORDER BY ap.NOM_APPRENANT, ap.PRENOM_APPRENANT, m.NOM_MATIERE;
 `,
     };
+
+    console.log("🔍 Requête SQL générée :", queries);
 
     const results: Partial<QueryResults> = {};
     const formattedData: FormattedData = {

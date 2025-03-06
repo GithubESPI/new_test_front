@@ -33,24 +33,24 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 
+// Ajout du champ name dans le schéma
 const formSchema = z.object({
-  name: z.string().min(2, {
-    message: "Le nom complet doit contenir au moins 2 caractères.",
-  }),
-  campus: z.string({
-    required_error: "Veuillez sélectionner un campus.",
-  }),
-  group: z.string({
-    required_error: "Veuillez sélectionner un groupe.",
-  }),
-  semester: z.string({
-    required_error: "Veuillez sélectionner un semestre.",
-  }),
+  name: z.string().optional(), // Maintenant name est inclus dans le schéma
+  campus: z.string().min(1, "Veuillez sélectionner un campus"),
+  group: z.string().min(1, "Veuillez sélectionner un groupe"),
+  semester: z.string().min(1, "Veuillez sélectionner une période"),
+  periodeEvaluationCode: z.string().optional(), // Optionnel pour l'initialisation du formulaire
+  periodeEvaluation: z.string().optional(), // Optionnel pour l'initialisation du formulaire
 });
+
+// Types pour votre formulaire
+type FormValues = z.infer<typeof formSchema>;
 
 interface PeriodeEvaluation {
   CODE_PERIODE_EVALUATION: string;
   NOM_PERIODE_EVALUATION: string;
+  DATE_DEB: string;
+  DATE_FIN: string;
 }
 
 interface YpareoStudent {
@@ -102,13 +102,15 @@ export default function Home() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       campus: "",
       group: "",
       semester: "",
+      periodeEvaluationCode: "",
+      periodeEvaluation: "",
     },
   });
 
@@ -195,8 +197,24 @@ export default function Home() {
         }
 
         const periodsData = await periodsResponse.json();
+
         if (periodsData.success && Array.isArray(periodsData.data)) {
-          setPeriods(periodsData.data);
+          const startDate = new Date("2024-08-26 00:00:00");
+          const endDate = new Date("2025-07-31 00:00:00");
+
+          const filteredPeriods = periodsData.data.filter((period: PeriodeEvaluation) => {
+            const periodStartDate = new Date(period.DATE_DEB);
+            const periodEndDate = new Date(period.DATE_FIN);
+
+            return (
+              // Cas 1 : Exactement les mêmes dates
+              (periodStartDate.getTime() === startDate.getTime() &&
+                periodEndDate.getTime() === endDate.getTime()) ||
+              // Cas 2 : Intervalle compris entre les dates spécifiées
+              (periodStartDate >= startDate && periodEndDate <= endDate)
+            );
+          });
+          setPeriods(filteredPeriods);
         } else {
           console.error("Format de données des périodes invalide:", periodsData);
           setPeriods([]);
@@ -259,16 +277,21 @@ export default function Home() {
     setGroups(filteredGroups);
   };
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: FormValues) => {
     try {
       setIsSubmitting(true);
 
       const selectedCampus = campuses.find((campus) => campus.id === values.campus);
       if (!selectedCampus) throw new Error("Campus non trouvé");
 
-      // Récupérer la période d'évaluation (Nom et Code)
-      const selectedPeriod = periods.find((p) => p.CODE_PERIODE_EVALUATION === values.semester);
-      if (!selectedPeriod) throw new Error("Période d'évaluation non trouvée");
+      // S'assurer que periodeEvaluationCode et periodeEvaluation sont définis
+      if (!values.periodeEvaluationCode || !values.periodeEvaluation) {
+        const selectedPeriod = periods.find((p) => p.CODE_PERIODE_EVALUATION === values.semester);
+        if (!selectedPeriod) throw new Error("Période d'évaluation non trouvée");
+
+        values.periodeEvaluationCode = values.semester;
+        values.periodeEvaluation = selectedPeriod.NOM_PERIODE_EVALUATION;
+      }
 
       const response = await fetch("/api/sql", {
         method: "POST",
@@ -276,13 +299,13 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          campus: selectedCampus.codeSite,
+          campus: selectedCampus.codeSite.toString(), // Utiliser codeSite au lieu de l'ID
           group: values.group,
+          periodeEvaluationCode: values.periodeEvaluationCode,
+          periodeEvaluation: values.periodeEvaluation,
           semester: values.semester,
-          periodeEvaluation: selectedPeriod.NOM_PERIODE_EVALUATION, // ✅ Ajout du NOM
         }),
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -344,13 +367,13 @@ export default function Home() {
                           placeholder="Nom et prénom"
                           {...field}
                           className="h-12 text-lg border-2 focus:border-[#0a5d81] transition-colors"
+                          value={field.value || ""} // Assurer qu'il y a toujours une valeur
                         />
                       </FormControl>
                       <FormMessage className="text-red-500" />
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={form.control}
                   name="campus"
@@ -381,7 +404,6 @@ export default function Home() {
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={form.control}
                   name="group"
@@ -419,7 +441,28 @@ export default function Home() {
                       <FormLabel className="text-lg font-semibold text-gray-700">
                         Période d&apos;évaluation
                       </FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={(value) => {
+                          const selectedPeriod = periods.find(
+                            (p) => p.CODE_PERIODE_EVALUATION === value
+                          );
+
+                          console.log("Période sélectionnée - Code:", value);
+                          console.log("Période sélectionnée - Détails:", selectedPeriod);
+
+                          // Stocker à la fois le code et le nom
+                          if (selectedPeriod) {
+                            form.setValue("periodeEvaluationCode", value); // Le code sélectionné
+                            form.setValue(
+                              "periodeEvaluation",
+                              selectedPeriod.NOM_PERIODE_EVALUATION
+                            ); // Le nom correspondant
+                          }
+
+                          field.onChange(value);
+                        }}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger className="h-12 text-lg border-2 focus:border-[#0a5d81]">
                             <SelectValue placeholder="Sélectionnez une période" />
@@ -441,7 +484,6 @@ export default function Home() {
                     </FormItem>
                   )}
                 />
-
                 <Button
                   type="submit"
                   className="w-full h-12 text-lg font-semibold bg-wtm-button-linear hover:bg-wtm-button-linear-reverse transition-all duration-300 flex items-center justify-center gap-2"
