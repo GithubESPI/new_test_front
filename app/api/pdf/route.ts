@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fileStorage } from "@/lib/fileStorage"; // Utiliser fileStorage au lieu de tempFileStorage
+import fs from "fs";
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
+import path from "path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 // Type definitions for the student data
@@ -63,6 +65,7 @@ interface CampusInfo {
 }
 
 // Function to create a PDF for a student
+// Function to create a PDF for a student
 async function createStudentPDF(
   student: StudentData,
   grades: StudentGrade[],
@@ -76,175 +79,272 @@ async function createStudentPDF(
   try {
     // Create a new PDF document
     const pdfDoc = await PDFDocument.create();
-    let page = pdfDoc.addPage([595.28, 841.89]);
+    let page = pdfDoc.addPage([595.28, 841.89]); // Format A4
 
     // Load fonts
-    const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-    const timesBoldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // Get student's grades, average and observation
-    const studentGrades = grades.filter((grade) => grade.CODE_APPRENANT === student.CODE_APPRENANT);
-    const studentAverage = averages.find((avg) => avg.CODE_APPRENANT === student.CODE_APPRENANT);
-    const studentObservation = observations.find(
-      (obs) => obs.CODE_APPRENANT === student.CODE_APPRENANT
-    );
-    const studentECTS = subjects.filter((subj) => subj.CODE_APPRENANT === student.CODE_APPRENANT);
-
-    // Get group and campus info
-    const group = groupInfo.length > 0 ? groupInfo[0] : null;
-    const campus = campusInfo.length > 0 ? campusInfo[0] : null;
-
-    // Set up margins and positions
+    // Set up margins
     const margin = 50;
-    let currentY = page.getHeight() - margin;
-    const lineHeight = 20;
+    const pageWidth = page.getWidth();
+    const pageHeight = page.getHeight();
+    let currentY = pageHeight - margin;
 
-    // Draw school header
-    page.drawText("ÉCOLE SUPÉRIEURE DE L'IMMOBILIER", {
-      x: margin,
+    // ESPI Logo and header section
+    // Logo ESPI (text en lieu de logo)
+    try {
+      const logoPath = path.join(process.cwd(), "public", "logo", "espi.jpg");
+      const logoBytes = fs.readFileSync(logoPath);
+      const logoImage = await pdfDoc.embedJpg(logoBytes);
+
+      // Obtenir les dimensions de l'image
+      const logoDims = logoImage.scale(0.5); // Ajustez l'échelle selon vos besoins
+
+      // Dessiner le logo ESPI
+      page.drawImage(logoImage, {
+        x: margin,
+        y: currentY - logoDims.height,
+        width: logoDims.width,
+        height: logoDims.height,
+      });
+
+      // Ajuster currentY pour compenser la hauteur du logo
+      currentY -= logoDims.height;
+    } catch (error) {
+      console.error("Erreur lors du chargement du logo ESPI:", error);
+      // Fallback au texte si l'image ne peut pas être chargée
+      page.drawText("ESPI", {
+        x: margin,
+        y: currentY,
+        size: 24,
+        font: helveticaBoldFont,
+        color: rgb(0.2, 0.6, 0.6),
+      });
+    }
+
+    // Identifiant de l'étudiant
+    currentY -= 30;
+    page.drawText(`Identifiant : ${student.CODE_APPRENANT}`, {
+      x: pageWidth - margin - 150,
       y: currentY,
-      size: 16,
-      font: timesBoldFont,
-      color: rgb(0.04, 0.36, 0.51), // #0A5D81 in RGB
+      size: 10,
+      font: helveticaFont,
     });
 
-    currentY -= lineHeight * 1.5;
-
-    // Draw bulletin title
-    page.drawText(`BULLETIN DE NOTES - ${period}`, {
-      x: margin,
+    // Titre du bulletin
+    currentY -= 20;
+    page.drawText("Bulletin de notes 2024-2025", {
+      x: pageWidth / 2 - 90,
       y: currentY,
       size: 14,
-      font: timesBoldFont,
+      font: helveticaBoldFont,
+    });
+
+    // Semestre
+    currentY -= 20;
+    page.drawText(`${period}`, {
+      x: pageWidth / 2 - 60,
+      y: currentY,
+      size: 12,
+      font: helveticaFont,
+    });
+
+    currentY -= 30;
+
+    // Cadre d'informations étudiant et groupe
+    const boxWidth = pageWidth - 2 * margin;
+    const boxHeight = 40;
+
+    // Dessiner le rectangle
+    page.drawRectangle({
+      x: margin,
+      y: currentY - boxHeight,
+      width: boxWidth,
+      height: boxHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    // Ligne verticale au milieu
+    page.drawLine({
+      start: { x: margin + boxWidth / 2, y: currentY },
+      end: { x: margin + boxWidth / 2, y: currentY - boxHeight },
+      thickness: 1,
       color: rgb(0, 0, 0),
     });
 
-    currentY -= lineHeight * 2;
-
-    // Draw student info
-    page.drawText(`Étudiant: ${student.NOM_APPRENANT} ${student.PRENOM_APPRENANT}`, {
-      x: margin,
-      y: currentY,
-      size: 12,
-      font: timesBoldFont,
+    // Informations étudiant côté gauche
+    page.drawText(`Apprenant: ${student.NOM_APPRENANT} ${student.PRENOM_APPRENANT}`, {
+      x: margin + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaFont,
     });
-
-    currentY -= lineHeight;
 
     if (student.DATE_NAISSANCE) {
       page.drawText(
         `Date de naissance: ${new Date(student.DATE_NAISSANCE).toLocaleDateString("fr-FR")}`,
         {
-          x: margin,
-          y: currentY,
+          x: margin + 5,
+          y: currentY - 30,
           size: 10,
-          font: timesRomanFont,
+          font: helveticaFont,
         }
       );
-
-      currentY -= lineHeight;
     }
 
-    page.drawText(`Code étudiant: ${student.CODE_APPRENANT}`, {
-      x: margin,
-      y: currentY,
+    // Groupe et campus côté droit
+    const group = groupInfo.length > 0 ? groupInfo[0] : null;
+    const campus = campusInfo.length > 0 ? campusInfo[0] : null;
+
+    page.drawText(`Groupe: ${group ? group.NOM_GROUPE : "Non spécifié"}`, {
+      x: margin + boxWidth / 2 + 5,
+      y: currentY - 15,
       size: 10,
-      font: timesRomanFont,
+      font: helveticaFont,
     });
 
-    currentY -= lineHeight;
+    page.drawText(`Campus: ${campus ? campus.NOM_SITE : "Non spécifié"}`, {
+      x: margin + boxWidth / 2 + 5,
+      y: currentY - 30,
+      size: 10,
+      font: helveticaFont,
+    });
 
-    if (group) {
-      page.drawText(
-        `Groupe: ${group.NOM_GROUPE}${group.ETENDU_GROUPE ? ` - ${group.ETENDU_GROUPE}` : ""}`,
-        {
-          x: margin,
-          y: currentY,
-          size: 10,
-          font: timesRomanFont,
-        }
-      );
+    currentY -= boxHeight + 20;
 
-      currentY -= lineHeight;
-    }
+    // Tableau des notes
+    // En-têtes
+    const tableWidth = boxWidth;
+    const col1Width = tableWidth * 0.4; // 40% pour les matières
+    const col2Width = tableWidth * 0.2; // 20% pour la moyenne
+    const col3Width = tableWidth * 0.2; // 20% pour les ECTS
 
-    if (campus) {
-      page.drawText(`Campus: ${campus.NOM_SITE}`, {
-        x: margin,
-        y: currentY,
-        size: 10,
-        font: timesRomanFont,
-      });
-
-      currentY -= lineHeight;
-    }
-
-    if (group && group.NOM_FORMATION) {
-      page.drawText(`Formation: ${group.NOM_FORMATION}`, {
-        x: margin,
-        y: currentY,
-        size: 10,
-        font: timesRomanFont,
-      });
-
-      currentY -= lineHeight * 2;
-    } else {
-      currentY -= lineHeight;
-    }
-
-    // Draw grades table header
-    const tableStartY = currentY;
     const col1X = margin;
-    const col2X = margin + 250;
-    const col3X = margin + 325;
+    const col2X = col1X + col1Width;
+    const col3X = col2X + col2Width;
+    const col4X = col3X + col3Width;
+    const rowHeight = 20;
 
-    page.drawText("Matière", {
+    // Dessiner l'en-tête du tableau
+    page.drawRectangle({
       x: col1X,
-      y: currentY,
-      size: 12,
-      font: timesBoldFont,
+      y: currentY - rowHeight,
+      width: tableWidth,
+      height: rowHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+      color: rgb(0.05, 0.4, 0.6), // Bleu pour l'en-tête
     });
 
-    page.drawText("Note", {
-      x: col2X,
-      y: currentY,
-      size: 12,
-      font: timesBoldFont,
-    });
-
-    page.drawText("ECTS", {
-      x: col3X,
-      y: currentY,
-      size: 12,
-      font: timesBoldFont,
-    });
-
-    currentY -= lineHeight;
-
-    // Draw horizontal line
+    // Colonnes de l'en-tête
     page.drawLine({
-      start: { x: margin, y: currentY + 5 },
-      end: { x: page.getWidth() - margin, y: currentY + 5 },
+      start: { x: col2X, y: currentY },
+      end: { x: col2X, y: currentY - rowHeight },
       thickness: 1,
       color: rgb(0, 0, 0),
     });
 
-    currentY -= lineHeight / 2;
+    page.drawLine({
+      start: { x: col3X, y: currentY },
+      end: { x: col3X, y: currentY - rowHeight },
+      thickness: 1,
+      color: rgb(0, 0, 0),
+    });
 
-    // Draw grades
-    for (const grade of studentGrades) {
+    page.drawLine({
+      start: { x: col4X, y: currentY },
+      end: { x: col4X, y: currentY - rowHeight },
+      thickness: 1,
+      color: rgb(0, 0, 0),
+    });
+
+    // Texte de l'en-tête
+    page.drawText("Enseignements", {
+      x: col1X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1), // Texte blanc
+    });
+
+    page.drawText("Moyenne", {
+      x: col2X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
+    });
+
+    page.drawText("Total ECTS", {
+      x: col3X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
+    });
+
+    page.drawText("État", {
+      x: col4X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
+    });
+
+    currentY -= rowHeight;
+
+    // Lignes pour chaque matière
+    for (const grade of grades.filter((g) => g.CODE_APPRENANT === student.CODE_APPRENANT)) {
       // Find corresponding ECTS credits
-      const subjectECTS = studentECTS.find((ects) => ects.CODE_MATIERE === grade.CODE_MATIERE);
+      const subjectECTS = subjects.find(
+        (ects) =>
+          ects.CODE_APPRENANT === student.CODE_APPRENANT && ects.CODE_MATIERE === grade.CODE_MATIERE
+      );
       const ectsValue = subjectECTS ? subjectECTS.CREDIT_ECTS : 0;
 
-      page.drawText(grade.NOM_MATIERE, {
+      // Dessiner le rectangle de la ligne
+      page.drawRectangle({
         x: col1X,
-        y: currentY,
-        size: 10,
-        font: timesRomanFont,
+        y: currentY - rowHeight,
+        width: tableWidth,
+        height: rowHeight,
+        borderColor: rgb(0, 0, 0),
+        borderWidth: 1,
       });
 
-      // Conversion robuste de la moyenne en affichage
+      // Lignes verticales
+      page.drawLine({
+        start: { x: col2X, y: currentY },
+        end: { x: col2X, y: currentY - rowHeight },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+      });
+
+      page.drawLine({
+        start: { x: col3X, y: currentY },
+        end: { x: col3X, y: currentY - rowHeight },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+      });
+
+      page.drawLine({
+        start: { x: col4X, y: currentY },
+        end: { x: col4X, y: currentY - rowHeight },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+      });
+
+      // Nom de la matière
+      page.drawText(grade.NOM_MATIERE, {
+        x: col1X + 5,
+        y: currentY - 15,
+        size: 9,
+        font: helveticaFont,
+      });
+
+      // Moyenne
       let moyenne = "N/A";
       try {
         const moyenneRaw = grade.MOYENNE as any;
@@ -262,13 +362,13 @@ async function createStudentPDF(
       }
 
       page.drawText(moyenne, {
-        x: col2X,
-        y: currentY,
-        size: 10,
-        font: timesRomanFont,
+        x: col2X + 5,
+        y: currentY - 15,
+        size: 9,
+        font: helveticaFont,
       });
 
-      // Conversion robuste des ECTS
+      // ECTS
       let ectsText = "0";
       try {
         ectsText = ectsValue !== null && ectsValue !== undefined ? ectsValue.toString() : "0";
@@ -277,178 +377,342 @@ async function createStudentPDF(
       }
 
       page.drawText(ectsText, {
-        x: col3X,
-        y: currentY,
-        size: 10,
-        font: timesRomanFont,
+        x: col3X + 5,
+        y: currentY - 15,
+        size: 9,
+        font: helveticaFont,
       });
 
-      currentY -= lineHeight;
+      // État (validé ou non)
+      const etat = parseFloat(moyenne.replace(",", ".")) >= 10 ? "VA" : "NV";
+      page.drawText(etat, {
+        x: col4X + 5,
+        y: currentY - 15,
+        size: 9,
+        font: helveticaFont,
+      });
 
-      // Add a new page if needed
-      if (currentY < margin) {
-        page.drawLine({
-          start: { x: margin, y: tableStartY + 5 },
-          end: { x: margin, y: currentY + lineHeight },
-          thickness: 1,
-          color: rgb(0, 0, 0),
-        });
+      currentY -= rowHeight;
 
-        page.drawLine({
-          start: { x: page.getWidth() - margin, y: tableStartY + 5 },
-          end: { x: page.getWidth() - margin, y: currentY + lineHeight },
-          thickness: 1,
-          color: rgb(0, 0, 0),
-        });
-
+      // Vérifier si une nouvelle page est nécessaire
+      if (currentY < margin + 100) {
+        // Ajouter une nouvelle page - CORRIGÉ
         page = pdfDoc.addPage([595.28, 841.89]);
-        currentY = page.getHeight() - margin;
+        currentY = pageHeight - margin;
       }
     }
 
-    // Pour la moyenne générale
-    // Draw average
-    let moyenneGeneraleText = "Moyenne générale: N/A";
+    // Ligne pour la moyenne générale
+    page.drawRectangle({
+      x: col1X,
+      y: currentY - rowHeight,
+      width: tableWidth,
+      height: rowHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+      color: rgb(0.05, 0.4, 0.6), // Même couleur que l'en-tête
+    });
+
+    // Lignes verticales
+    page.drawLine({
+      start: { x: col2X, y: currentY },
+      end: { x: col2X, y: currentY - rowHeight },
+      thickness: 1,
+      color: rgb(0, 0, 0),
+    });
+
+    page.drawLine({
+      start: { x: col3X, y: currentY },
+      end: { x: col3X, y: currentY - rowHeight },
+      thickness: 1,
+      color: rgb(0, 0, 0),
+    });
+
+    page.drawLine({
+      start: { x: col4X, y: currentY },
+      end: { x: col4X, y: currentY - rowHeight },
+      thickness: 1,
+      color: rgb(0, 0, 0),
+    });
+
+    // Texte "Moyenne générale"
+    page.drawText("Moyenne générale", {
+      x: col1X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
+    });
+
+    // Valeur de la moyenne générale
+    const studentAverage = averages.find((avg) => avg.CODE_APPRENANT === student.CODE_APPRENANT);
+    let moyenneGenerale = "N/A";
+
     if (studentAverage) {
       try {
-        // Cast explicite pour éviter l'erreur 'never'
         const moyenneGeneraleRaw = studentAverage.MOYENNE_GENERALE as any;
-        const moyenneGenerale =
+        const moyenneGeneraleValue =
           typeof moyenneGeneraleRaw === "string"
             ? parseFloat(moyenneGeneraleRaw.replace(",", "."))
             : moyenneGeneraleRaw;
 
-        if (moyenneGenerale !== null && !isNaN(moyenneGenerale)) {
-          const formattedMoyenne =
-            typeof moyenneGenerale.toFixed === "function"
-              ? moyenneGenerale.toFixed(2)
-              : moyenneGenerale.toString();
-          moyenneGeneraleText = `Moyenne générale: ${formattedMoyenne}/20`;
+        if (moyenneGeneraleValue !== null && !isNaN(moyenneGeneraleValue)) {
+          moyenneGenerale =
+            typeof moyenneGeneraleValue.toFixed === "function"
+              ? moyenneGeneraleValue.toFixed(2)
+              : moyenneGeneraleValue.toString();
         }
       } catch (error) {
         console.log("Erreur lors du formatage de la moyenne générale:", error);
       }
     }
 
-    page.drawText(moyenneGeneraleText, {
-      x: margin,
-      y: currentY,
-      size: 12,
-      font: timesBoldFont,
+    page.drawText(moyenneGenerale, {
+      x: col2X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
     });
 
-    currentY -= lineHeight * 2;
+    // Total ECTS validés
+    const totalECTS = subjects
+      .filter((ects) => ects.CODE_APPRENANT === student.CODE_APPRENANT)
+      .reduce((acc, curr) => acc + (curr.CREDIT_ECTS || 0), 0);
 
-    // Draw observation
-    // Draw observation
+    page.drawText(totalECTS.toString(), {
+      x: col3X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
+    });
+
+    // État général (validé ou non)
+    const etatGeneral =
+      parseFloat(moyenneGenerale.replace(",", ".")) >= 10 ? "Validé" : "Non validé";
+    page.drawText(etatGeneral, {
+      x: col4X + 5,
+      y: currentY - 15,
+      size: 10,
+      font: helveticaBoldFont,
+      color: rgb(1, 1, 1),
+    });
+
+    currentY -= rowHeight + 20;
+
+    // Section absences et observations
+    const obsBoxHeight = 60;
+    const obsColWidth = boxWidth / 3;
+
+    // Rectangle pour les absences
+    page.drawRectangle({
+      x: col1X,
+      y: currentY - obsBoxHeight,
+      width: obsColWidth,
+      height: obsBoxHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    // En-tête absences
+    page.drawRectangle({
+      x: col1X,
+      y: currentY,
+      width: obsColWidth,
+      height: rowHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    page.drawText("Absences justifiées", {
+      x: col1X + 5,
+      y: currentY - 15,
+      size: 9,
+      font: helveticaFont,
+    });
+
+    // Rectangle pour les absences injustifiées
+    page.drawRectangle({
+      x: col1X + obsColWidth,
+      y: currentY - obsBoxHeight,
+      width: obsColWidth,
+      height: obsBoxHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    // En-tête absences injustifiées
+    page.drawRectangle({
+      x: col1X + obsColWidth,
+      y: currentY,
+      width: obsColWidth,
+      height: rowHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    page.drawText("Absences injustifiées", {
+      x: col1X + obsColWidth + 5,
+      y: currentY - 15,
+      size: 9,
+      font: helveticaFont,
+    });
+
+    // Rectangle pour les retards
+    page.drawRectangle({
+      x: col1X + 2 * obsColWidth,
+      y: currentY - obsBoxHeight,
+      width: obsColWidth,
+      height: obsBoxHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    // En-tête retards
+    page.drawRectangle({
+      x: col1X + 2 * obsColWidth,
+      y: currentY,
+      width: obsColWidth,
+      height: rowHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 1,
+    });
+
+    page.drawText("Retards", {
+      x: col1X + 2 * obsColWidth + 5,
+      y: currentY - 15,
+      size: 9,
+      font: helveticaFont,
+    });
+
+    // Placer des valeurs fictives pour les absences et retards
+    page.drawText("0", {
+      x: col1X + obsColWidth / 2 - 5,
+      y: currentY - 40,
+      size: 12,
+      font: helveticaBoldFont,
+    });
+
+    page.drawText("0", {
+      x: col1X + obsColWidth + obsColWidth / 2 - 5,
+      y: currentY - 40,
+      size: 12,
+      font: helveticaBoldFont,
+    });
+
+    page.drawText("0", {
+      x: col1X + 2 * obsColWidth + obsColWidth / 2 - 5,
+      y: currentY - 40,
+      size: 12,
+      font: helveticaBoldFont,
+    });
+
+    currentY -= obsBoxHeight + 20;
+
+    // Observations
+    const studentObservation = observations.find(
+      (obs) => obs.CODE_APPRENANT === student.CODE_APPRENANT
+    );
+
     if (studentObservation) {
-      page.drawText("Observations:", {
-        x: margin,
+      page.drawText("OBSERVATIONS:", {
+        x: col1X,
         y: currentY,
-        size: 12,
-        font: timesBoldFont,
+        size: 10,
+        font: helveticaBoldFont,
       });
 
-      currentY -= lineHeight;
+      currentY -= 15;
 
       // Nettoyer et normaliser le texte d'observation
       let observationText = "";
       try {
-        // Nettoyer le texte pour supprimer les caractères problématiques
         observationText = studentObservation.MEMO_OBSERVATION || "";
-
-        // Supprimer les retours à la ligne (carriage return - 0x000d) qui causent des problèmes
         observationText = observationText.replace(/\r/g, " ");
-
-        // Supprimer d'autres caractères potentiellement problématiques
         observationText = observationText.replace(/[^\x20-\x7E\xA0-\xFF]/g, " ");
       } catch (error) {
         console.log("Erreur lors du nettoyage du texte d'observation:", error);
         observationText = "Observations non disponibles en raison d'un problème d'encodage.";
       }
 
-      // Split observation text into lines to fit within the page
-      const maxWidth = page.getWidth() - 2 * margin;
+      // Découper le texte en lignes
+      const maxWidth = pageWidth - 2 * margin;
+      const words = observationText.split(" ");
+      let line = "";
 
-      try {
-        // Découpage sécurisé du texte en lignes
-        const words = observationText.split(" ");
-        let line = "";
-
-        for (const word of words) {
-          try {
-            const testLine = line + (line ? " " : "") + word;
-            let textWidth = 0;
-
-            try {
-              textWidth = timesRomanFont.widthOfTextAtSize(testLine, 10);
-            } catch (e) {
-              // Notez le underscore avant le e
-              // Si un caractère pose problème, on saute ce mot
-              console.log(`Problème de mesure de largeur avec le mot: ${word}`, e);
-              continue;
-            }
-
-            if (textWidth > maxWidth) {
-              // Dessiner la ligne actuelle si elle existe
-              if (line) {
-                page.drawText(line, {
-                  x: margin,
-                  y: currentY,
-                  size: 10,
-                  font: timesRomanFont,
-                });
-              }
-
-              line = word;
-              currentY -= lineHeight;
-
-              // Add a new page if needed
-              if (currentY < margin) {
-                page = pdfDoc.addPage([595.28, 841.89]);
-                currentY = page.getHeight() - margin;
-              }
-            } else {
-              line = testLine;
-            }
-          } catch (error) {
-            console.log(`Erreur lors du traitement du mot "${word}":`, error);
-            // Continuer avec le mot suivant
-            continue;
-          }
-        }
-
-        // Draw the last line
-        if (line) {
-          try {
-            page.drawText(line, {
-              x: margin,
-              y: currentY,
-              size: 10,
-              font: timesRomanFont,
-            });
-          } catch (error) {
-            console.log("Erreur lors du dessin de la dernière ligne:", error);
-          }
-        }
-      } catch (error) {
-        console.log("Erreur générale lors du traitement du texte d'observation:", error);
-
-        // Fallback - afficher un message simple en cas d'erreur
+      for (const word of words) {
         try {
-          page.drawText("Observations non disponibles (problème d'encodage).", {
-            x: margin,
-            y: currentY,
-            size: 10,
-            font: timesRomanFont,
-          });
-        } catch (_e) {
-          // Notez le underscore avant le e
-          // Si même cela échoue, on abandonne l'affichage des observations
-          console.log("Impossible d'afficher même le message d'erreur:", _e);
+          const testLine = line + (line ? " " : "") + word;
+          const textWidth = helveticaFont.widthOfTextAtSize(testLine, 9);
+
+          if (textWidth > maxWidth) {
+            page.drawText(line, {
+              x: col1X,
+              y: currentY,
+              size: 9,
+              font: helveticaFont,
+            });
+
+            line = word;
+            currentY -= 12;
+
+            if (currentY < margin) {
+              // Ajouter une nouvelle page - CORRIGÉ
+              page = pdfDoc.addPage([595.28, 841.89]);
+              currentY = pageHeight - margin;
+            }
+          } else {
+            line = testLine;
+          }
+        } catch (error) {
+          console.log(`Erreur lors du traitement du mot "${word}":`, error);
+          continue;
         }
       }
+
+      // Dessiner la dernière ligne
+      if (line) {
+        page.drawText(line, {
+          x: col1X,
+          y: currentY,
+          size: 9,
+          font: helveticaFont,
+        });
+      }
     }
+
+    // Pied de page avec signature
+    const signatureY = 100;
+
+    // Texte du lieu et de la date
+    page.drawText(
+      `Fait à ${campus ? campus.NOM_SITE : "Paris"}, le ${new Date().toLocaleDateString("fr-FR")}`,
+      {
+        x: pageWidth - margin - 200,
+        y: signatureY,
+        size: 10,
+        font: helveticaFont,
+      }
+    );
+
+    // Signature
+    page.drawText("Signature du responsable pédagogique", {
+      x: pageWidth - margin - 200,
+      y: signatureY - 20,
+      size: 10,
+      font: helveticaFont,
+    });
+
+    // Information sur la validité
+    const validiteY = 50;
+    page.drawText("VA : Validé / NV : Non Validé / C: Compensation / S: Rattrapage", {
+      x: margin,
+      y: validiteY,
+      size: 8,
+      font: helveticaFont,
+      color: rgb(0.5, 0.5, 0.5),
+    });
 
     // Serialize the PDF document
     const pdfBytes = await pdfDoc.save();
