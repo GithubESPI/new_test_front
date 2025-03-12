@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -27,9 +28,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2, FileText, Loader2, School, XCircle } from "lucide-react";
+import { CheckCircle2, FileDown, FileText, Loader2, School, XCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 
@@ -97,10 +98,18 @@ export default function Home() {
   const [periods, setPeriods] = useState<PeriodeEvaluation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [allGroups, setAllGroups] = useState<YpareoGroup[]>([]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
+  const [showPdfSuccessModal, setShowPdfSuccessModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [retrievedData, setRetrievedData] = useState<any>(null);
+  const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string>("");
+  const [pdfStudentCount, setPdfStudentCount] = useState<number>(0);
+  const [selectedGroupName, setSelectedGroupName] = useState<string>("");
+  // Déclarez une ref pour stocker les données entre les rendus
+  const responseDataRef = useRef<any>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -293,6 +302,12 @@ export default function Home() {
         values.periodeEvaluation = selectedPeriod.NOM_PERIODE_EVALUATION;
       }
 
+      // Stocker le nom du groupe sélectionné
+      const selectedGroup = groups.find((group) => group.id.toString() === values.group);
+      if (selectedGroup) {
+        setSelectedGroupName(selectedGroup.label);
+      }
+
       const response = await fetch("/api/sql", {
         method: "POST",
         headers: {
@@ -313,6 +328,11 @@ export default function Home() {
       }
 
       console.log("✅ Données récupérées:", data);
+
+      // Stocker les données dans à la fois la ref et l'état
+      responseDataRef.current = data.data;
+      setRetrievedData(data.data);
+      console.log("Données stockées:", responseDataRef.current ? "Non null" : "Null");
       setShowSuccessModal(true);
     } catch (error: any) {
       console.error("❌ Erreur lors de la soumission:", error);
@@ -321,6 +341,68 @@ export default function Home() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleGeneratePDFs = async () => {
+    // Utilisez la ref ou l'état, selon ce qui est disponible
+    const dataToUse = responseDataRef.current || retrievedData;
+
+    if (!dataToUse) {
+      console.error("Aucune donnée disponible pour générer les PDFs");
+      setErrorMessage("Aucune donnée disponible pour générer les PDFs");
+      setShowErrorModal(true);
+      return;
+    }
+
+    try {
+      setIsGeneratingPDF(true);
+      console.log("Données pour génération PDF:", dataToUse);
+      console.log("APPRENANT:", dataToUse.APPRENANT?.length || 0);
+      console.log("MOYENNES_UE:", dataToUse.MOYENNES_UE?.length || 0);
+      console.log("MOYENNE_GENERALE:", dataToUse.MOYENNE_GENERALE?.length || 0);
+      console.log("OBSERVATIONS:", dataToUse.OBSERVATIONS?.length || 0);
+      console.log("ECTS_PAR_MATIERE:", dataToUse.ECTS_PAR_MATIERE?.length || 0);
+      console.log("GROUPE:", dataToUse.GROUPE?.length || 0);
+      console.log("SITE:", dataToUse.SITE?.length || 0);
+
+      const selectedPeriod = form.getValues("periodeEvaluation") || "";
+      console.log("Période sélectionnée:", selectedPeriod);
+      console.log("Nom du groupe:", selectedGroupName);
+
+      const response = await fetch("/api/pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: dataToUse,
+          periodeEvaluation: selectedPeriod,
+          groupName: selectedGroupName,
+        }),
+      });
+
+      // Vérifier si la réponse est OK
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erreur lors de la génération des PDFs");
+      }
+
+      const data = await response.json();
+
+      setPdfDownloadUrl(data.path);
+      setPdfStudentCount(data.studentCount);
+      setShowPdfSuccessModal(true);
+    } catch (error: any) {
+      console.error("❌ Erreur lors de la génération des PDFs:", error);
+      setErrorMessage(error.message || "Une erreur est survenue lors de la génération des PDFs");
+      setShowErrorModal(true);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const closeSuccessModal = () => {
+    setShowSuccessModal(false);
   };
 
   if (isLoading) {
@@ -494,7 +576,7 @@ export default function Home() {
                   ) : (
                     <FileText className="w-5 h-5" />
                   )}
-                  {isSubmitting ? "Génération en cours..." : "Générer les bulletins"}
+                  {isSubmitting ? "Chargement..." : "Confirmer le choix de mon groupe"}
                 </Button>
               </form>
             </Form>
@@ -502,6 +584,7 @@ export default function Home() {
         </Card>
       </div>
 
+      {/* Modale de succès */}
       {/* Modale de succès */}
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="sm:max-w-md">
@@ -515,6 +598,88 @@ export default function Home() {
               génération des bulletins.
             </DialogDescription>
           </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 sm:justify-center pt-4">
+            <Button onClick={closeSuccessModal} variant="outline" className="w-full sm:w-auto">
+              Fermer
+            </Button>
+            <Button
+              onClick={handleGeneratePDFs} // Utilisez la fonction ici
+              disabled={isGeneratingPDF}
+              className="w-full sm:w-auto bg-wtm-button-linear hover:bg-wtm-button-linear-reverse transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              {isGeneratingPDF ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <FileText className="w-5 h-5" />
+              )}
+              {isGeneratingPDF ? "Génération en cours..." : "Générer les bulletins PDF"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modale de succès pour la génération des PDFs */}
+      <Dialog open={showPdfSuccessModal} onOpenChange={setShowPdfSuccessModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="w-6 h-6" />
+              Bulletins générés avec succès
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {pdfStudentCount} bulletins ont été générés et placés dans une archive ZIP.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 sm:justify-center pt-4">
+            <Button
+              onClick={() => setShowPdfSuccessModal(false)}
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
+              Fermer
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  // Utiliser fetch pour télécharger le fichier plutôt que window.location
+                  const response = await fetch(pdfDownloadUrl);
+
+                  // Vérifier si la requête a réussi
+                  if (!response.ok) {
+                    throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+                  }
+
+                  // Convertir la réponse en blob
+                  const blob = await response.blob();
+
+                  // Créer un URL pour le blob
+                  const url = URL.createObjectURL(blob);
+
+                  // Créer un élément <a> pour télécharger le fichier
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `bulletins_${selectedGroupName.replace(/\s+/g, "_")}.zip`;
+                  document.body.appendChild(a);
+
+                  // Déclencher le téléchargement
+                  a.click();
+
+                  // Nettoyer
+                  URL.revokeObjectURL(url);
+                  document.body.removeChild(a);
+                } catch (error) {
+                  console.error("Erreur lors du téléchargement:", error);
+                  setErrorMessage("Erreur lors du téléchargement: " + (error as Error).message);
+                  setShowErrorModal(true);
+                  setShowPdfSuccessModal(false);
+                }
+              }}
+              className="w-full sm:w-auto bg-wtm-button-linear hover:bg-wtm-button-linear-reverse transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <FileDown className="w-5 h-5" />
+              Télécharger les bulletins
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
