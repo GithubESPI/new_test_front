@@ -863,17 +863,36 @@ async function createStudentPDF(
       color: rgb(1, 1, 1),
     });
 
-    // ✅ Correction : Calcul du total des ECTS
-    const getTotalECTS = (subjects: SubjectECTS[], studentId: string): number =>
-      subjects
-        .filter((subject) => subject.CODE_APPRENANT === studentId) // Filtrer les matières de l'étudiant
-        .reduce((total, subject) => total + (Number(subject.CREDIT_ECTS) || 0), 0); // Convertir en nombre et additionner
+    // ✅ Correction : Calcul du total des ECTS basé uniquement sur les UE
+    const getTotalECTS = (subjects: SubjectECTS[], studentId: string): number => {
+      // Filtrer d'abord les matières appartenant à l'étudiant
+      const studentSubjects = subjects.filter((subject) => subject.CODE_APPRENANT === studentId);
+
+      // Filtrer uniquement les UE (en se basant sur le nom commençant par "UE")
+      const ueSubjects = studentSubjects.filter(
+        (subject) => subject.NOM_MATIERE && subject.NOM_MATIERE.startsWith("UE")
+      );
+
+      // Sommer les ECTS des UE uniquement
+      return ueSubjects.reduce((total, subject) => total + (Number(subject.CREDIT_ECTS) || 0), 0);
+    };
 
     // ✅ Vérification et correction du calcul du total des ECTS
     const totalECTS = getTotalECTS(subjects, student.CODE_APPRENANT);
-    console.log("Total ECTS après conversion :", totalECTS);
+    console.log("Total ECTS (UE uniquement) :", totalECTS);
 
-    console.log("Total ECTS calculé :", totalECTS); // Vérifie la valeur dans la console
+    // Log détaillé pour le débogage
+    console.log("Détail des UE pour l'étudiant " + student.CODE_APPRENANT + ":");
+    subjects
+      .filter(
+        (subject) =>
+          subject.CODE_APPRENANT === student.CODE_APPRENANT &&
+          subject.NOM_MATIERE &&
+          subject.NOM_MATIERE.startsWith("UE")
+      )
+      .forEach((ue) => {
+        console.log(`${ue.NOM_MATIERE}: ${ue.CREDIT_ECTS} ECTS`);
+      });
 
     const totalECTSText = String(totalECTS); // Assurer une conversion propre en string
     const totalECTSWidth = mainFont.widthOfTextAtSize(totalECTSText, fontSize);
@@ -1091,7 +1110,7 @@ async function createStudentPDF(
 
     // Information sur la validité
     const validiteY = 50;
-    page.drawText("VA : Validé / NV : Non Validé / C: Compensation / S: Rattrapage", {
+    page.drawText("VA : Validé / NV : Non Validé / C: Compensation / R: Rattrapage", {
       x: margin,
       y: validiteY,
       size: 8,
