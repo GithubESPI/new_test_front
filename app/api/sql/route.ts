@@ -27,6 +27,7 @@ interface QueryResults {
   MOYENNE_GENERALE: any[];
   ECTS_PAR_MATIERE: any[];
   OBSERVATIONS: any[];
+  PERSONNEL: any[];
 }
 
 async function executeQuery(query: string, token: string): Promise<any[]> {
@@ -182,7 +183,8 @@ export async function POST(request: Request) {
       `,
 
       SITE: `
-        SELECT DISTINCT s.* FROM SITE s
+        SELECT DISTINCT s.CODE_SITE, s.NOM_SITE, s.ETENDU_SITE, p.CODE_PERSONNEL FROM SITE s 
+        INNER JOIN PERSONNEL p ON s.CODE_PERSONNEL = p.CODE_PERSONNEL
         WHERE s.CODE_SITE = ${campus}
       `,
 
@@ -330,6 +332,9 @@ export async function POST(request: Request) {
         AND (r.CODE_ANNEE = ${groupNumQuery} OR (r.CODE_ANNEE = 4 AND ${groupNumQuery} = 3))
       ORDER BY a.NOM_APPRENANT, a.PRENOM_APPRENANT
       `,
+
+      PERSONNEL: `SELECT DISTINCT p.CODE_PERSONNEL, g.CODE_PERSONNEL_GESTIONNAIRE, p.NOM_PERSONNEL, p.PRENOM_PERSONNEL, p.CODE_FONCTION_PERSONNEL,p.CODE_FONCTION_PERSONNEL,p.NOM_PERSONNEL, p.PRENOM_PERSONNEL, fp.NOM_FONCTION_PERSONNEL 
+      FROM GROUPE g INNER JOIN PERSONNEL p ON g.CODE_PERSONNEL = p.CODE_PERSONNEL INNER JOIN FONCTION_PERSONNEL fp ON p.CODE_FONCTION_PERSONNEL = fp.CODE_FONCTION_PERSONNEL WHERE g.CODE_GROUPE = ${group}`,
     };
 
     console.log("🔍 Requête SQL générée :", queries);

@@ -56,6 +56,10 @@ interface GroupInfo {
   NOM_GROUPE: string;
   ETENDU_GROUPE?: string;
   NOM_FORMATION?: string;
+  CODE_PERSONNEL_GESTIONNAIRE?: string;
+  NOM_PERSONNEL?: string;
+  PRENOM_PERSONNEL?: string;
+  NOM_FONCTION_PERSONNEL?: string;
   [key: string]: any;
 }
 
@@ -369,6 +373,28 @@ function associerMatieresAuxUE(
   return ueMap;
 }
 
+// Fonction d'aide pour obtenir le nom du fichier de signature en fonction du code personnel
+function getSignatureFilename(codePersonnelGestionnaire: string): string | null {
+  // Mapping entre les codes personnels gestionnaires et les noms de fichiers de signature
+  const signatureMap: Record<string, string> = {
+    "466": "signMylèneDubois.png",
+    "89152": "magali.png",
+    "500": "estelle.jpg",
+    "2239": "signature_marionsoustelle.png",
+    "482": "ludivinelaунay.png",
+    "459": "camilledias.png",
+    "438": "signSandraBertrand.jpg",
+    "460": "christine.jpg",
+    "517": "signYoussefSAKER.jpg",
+    "149170": "lebon.png",
+    "493": "nathalie.jpg",
+    "524": "christine.jpg", // Ajout pour le CODE_PERSONNEL_GESTIONNAIRE "524"
+    // You can add more mappings as needed
+  };
+
+  return signatureMap[codePersonnelGestionnaire] || null;
+}
+
 // Function to create a PDF for a student
 // Function to create a PDF for a student
 async function createStudentPDF(
@@ -381,7 +407,8 @@ async function createStudentPDF(
   campusInfo: CampusInfo[],
   period: string,
   absence: Absence[],
-  processedABS: ProcessedAbsence[]
+  processedABS: ProcessedAbsence[],
+  personnelData?: any[]
 ): Promise<Uint8Array> {
   try {
     // Create a new PDF document
@@ -418,8 +445,8 @@ async function createStudentPDF(
     const boldFont = poppinsBold || (await pdfDoc.embedFont(StandardFonts.HelveticaBold));
 
     // Définir une taille de police plus petite par défaut
-    const fontSize = 9;
-    const fontSizeBold = 9;
+    const fontSize = 8;
+    const fontSizeBold = 8;
     const fontSizeTitle = 11;
     // const fontSizeHeader = 10;
 
@@ -622,7 +649,7 @@ async function createStudentPDF(
     page.drawText(`Identifiant : ${student.CODE_APPRENANT}`, {
       x: pageWidth - margin - 150,
       y: currentY,
-      size: fontSize,
+      size: 4,
       font: mainFont,
       color: rgb(1, 1, 1),
     });
@@ -885,7 +912,7 @@ async function createStudentPDF(
       page.drawText(grade.NOM_MATIERE, {
         x: col1X + 5,
         y: currentY - 15,
-        size: 9,
+        size: fontSize,
         font: textFont, // Appliquer la bonne police
         color: rgb(0, 0, 0), // Texte noir
       });
@@ -910,13 +937,13 @@ async function createStudentPDF(
       }
 
       const moyenneFont = isUE ? boldFont : mainFont;
-      const moyenneTextWidth = moyenneFont.widthOfTextAtSize(moyenne, 9);
+      const moyenneTextWidth = moyenneFont.widthOfTextAtSize(moyenne, fontSize);
       const moyenneCenterX = col2X + col2Width / 2 - moyenneTextWidth / 2;
 
       page.drawText(moyenne, {
         x: moyenneCenterX,
         y: currentY - 15,
-        size: 9,
+        size: fontSize,
         font: moyenneFont,
         color: rgb(0, 0, 0), // Texte noir
       });
@@ -931,13 +958,13 @@ async function createStudentPDF(
 
       // ECTS (gras pour "UE")**
       const ectsFont = isUE ? boldFont : mainFont;
-      const ectsTextWidth = ectsFont.widthOfTextAtSize(ectsText, 9);
+      const ectsTextWidth = ectsFont.widthOfTextAtSize(ectsText, fontSize);
       const ectsCenterX = col3X + col3Width / 2 - ectsTextWidth / 2;
 
       page.drawText(ectsText, {
         x: ectsCenterX,
         y: currentY - 15,
-        size: 9,
+        size: fontSize,
         font: ectsFont,
         color: rgb(0, 0, 0), // Texte noir
       });
@@ -966,13 +993,13 @@ async function createStudentPDF(
         etatColor = rgb(0, 0, 0); // Noir pour les autres états
       }
 
-      const etatWidth = etatFont.widthOfTextAtSize(etat, 9);
+      const etatWidth = etatFont.widthOfTextAtSize(etat, fontSize);
       const etatCenterX = col4X + col4Width / 2 - etatWidth / 2;
 
       page.drawText(etat, {
         x: etatCenterX,
         y: currentY - 15,
-        size: 9,
+        size: fontSize,
         font: etatFont,
         color: etatColor, // Utiliser la couleur déterminée
       });
@@ -1152,7 +1179,6 @@ async function createStudentPDF(
     currentY -= rowHeight + 20;
 
     // Section absences et observations
-    const obsBoxHeight = 60;
     const boxWidthABS = pageWidth - 2 * margin;
     const boxHeightABS = 40;
 
@@ -1240,7 +1266,6 @@ async function createStudentPDF(
     }
 
     currentY -= boxHeightABS + 20;
-    currentY -= obsBoxHeight + 20;
 
     // Observations
     const studentObservation = observations.find(
@@ -1248,11 +1273,12 @@ async function createStudentPDF(
     );
 
     if (studentObservation) {
-      page.drawText("Appréciations:", {
+      page.drawText("Appréciations :", {
         x: col1X,
         y: currentY,
         size: fontSize,
         font: mainFont,
+        color: espiBlue,
       });
 
       currentY -= 15;
@@ -1276,14 +1302,15 @@ async function createStudentPDF(
       for (const word of words) {
         try {
           const testLine = line + (line ? " " : "") + word;
-          const textWidth = mainFont.widthOfTextAtSize(testLine, 9);
+          const textWidth = mainFont.widthOfTextAtSize(testLine, fontSize);
 
           if (textWidth > maxWidth) {
             page.drawText(line, {
               x: col1X,
               y: currentY,
-              size: 9,
+              size: fontSize,
               font: mainFont,
+              color: espiBlue,
             });
 
             line = word;
@@ -1308,40 +1335,206 @@ async function createStudentPDF(
         page.drawText(line, {
           x: col1X,
           y: currentY,
-          size: 9,
+          size: fontSize,
           font: mainFont,
+          color: espiBlue,
         });
       }
     }
 
     // Pied de page avec signature
-    const signatureY = 100;
-
+    const signatureY = 135;
     // Texte du lieu et de la date
     page.drawText(
       `Fait à ${campus ? campus.NOM_SITE : "Paris"}, le ${new Date().toLocaleDateString("fr-FR")}`,
       {
         x: pageWidth - margin - 200,
         y: signatureY,
-        size: fontSize,
+        size: 7,
         font: mainFont,
       }
     );
 
-    // Signature
-    page.drawText("Signature du responsable pédagogique", {
-      x: pageWidth - margin - 200,
-      y: signatureY - 20,
-      size: fontSize,
-      font: mainFont,
+    // Récupérer le code personnel du gestionnaire à partir du groupe si disponible
+    let codePersonnelGestionnaire = "";
+    let nomPersonnel = "";
+    let prenomPersonnel = "";
+    let nomFonctionPersonnel = "";
+
+    // Vérifier si les données PERSONNEL sont disponibles
+    console.log("PERSONNEL data:", personnelData);
+    console.log("groupInfo:", groupInfo);
+
+    // Vérifier d'abord si les données sont disponibles directement dans groupInfo
+    if (groupInfo.length > 0) {
+      codePersonnelGestionnaire = groupInfo[0].CODE_PERSONNEL_GESTIONNAIRE || "";
+      nomPersonnel = groupInfo[0].NOM_PERSONNEL || "";
+      prenomPersonnel = groupInfo[0].PRENOM_PERSONNEL || "";
+      nomFonctionPersonnel = groupInfo[0].NOM_FONCTION_PERSONNEL || "";
+
+      console.log("From groupInfo:", {
+        code: codePersonnelGestionnaire,
+        nom: nomPersonnel,
+        prenom: prenomPersonnel,
+        fonction: nomFonctionPersonnel,
+      });
+    }
+
+    // Si aucune donnée n'est disponible dans groupInfo, vérifier si PERSONNEL est disponible
+    if ((!nomPersonnel || !prenomPersonnel) && personnelData && personnelData.length > 0) {
+      const personnel = personnelData[0];
+      codePersonnelGestionnaire = personnel.CODE_PERSONNEL_GESTIONNAIRE || "";
+      nomPersonnel = personnel.NOM_PERSONNEL || "";
+      prenomPersonnel = personnel.PRENOM_PERSONNEL || "";
+      nomFonctionPersonnel = personnel.NOM_FONCTION_PERSONNEL || "";
+
+      console.log("From PERSONNEL data:", {
+        code: codePersonnelGestionnaire,
+        nom: nomPersonnel,
+        prenom: prenomPersonnel,
+        fonction: nomFonctionPersonnel,
+      });
+    }
+
+    // Fallback si toujours aucune donnée
+    if (!nomPersonnel) nomPersonnel = "Responsable";
+    if (!prenomPersonnel) prenomPersonnel = "Pédagogique";
+    if (!nomFonctionPersonnel) nomFonctionPersonnel = "Responsable Pédagogique";
+    if (!codePersonnelGestionnaire && campus && campus.CODE_PERSONNEL) {
+      codePersonnelGestionnaire = campus.CODE_PERSONNEL;
+    }
+
+    // Debug log
+    console.log("Final signature data:", {
+      code: codePersonnelGestionnaire,
+      nom: nomPersonnel,
+      prenom: prenomPersonnel,
+      fonction: nomFonctionPersonnel,
     });
+
+    // Obtenir le nom du fichier de signature correspondant au code personnel
+    const signatureFilename = getSignatureFilename(codePersonnelGestionnaire);
+    console.log(
+      `Searching signature for code ${codePersonnelGestionnaire}, found: ${signatureFilename}`
+    );
+
+    // Si un fichier de signature est disponible pour ce code personnel
+    // Si un fichier de signature est disponible pour ce code personnel
+    if (signatureFilename) {
+      try {
+        // Déterminer l'extension du fichier pour choisir la méthode d'intégration appropriée
+        const isJpg =
+          signatureFilename.toLowerCase().endsWith(".jpg") ||
+          signatureFilename.toLowerCase().endsWith(".jpeg");
+
+        // Chemin vers l'image de signature
+        const signaturePath = path.join(process.cwd(), "public", "signatures", signatureFilename);
+        console.log(`Looking for signature at: ${signaturePath}`);
+        const signatureBytes = fs.readFileSync(signaturePath);
+
+        // Intégrer l'image selon son format
+        let signatureImage;
+        if (isJpg) {
+          signatureImage = await pdfDoc.embedJpg(signatureBytes);
+        } else {
+          signatureImage = await pdfDoc.embedPng(signatureBytes);
+        }
+
+        // Obtenir les dimensions de l'image et la redimensionner si nécessaire
+        const originalWidth = signatureImage.width;
+        let scale = 0.2; // Échelle par défaut
+
+        // Ajuster l'échelle en fonction de la largeur de l'image
+        if (originalWidth > 400) scale = 0.15;
+        else if (originalWidth < 200) scale = 0.35;
+
+        // Ajouter une limite de taille maximale pour la signature
+        const MAX_WIDTH = 120; // Limite la signature à 120 points de large
+        const scaleByWidth = signatureImage.scale(scale);
+        let finalScale = scale;
+
+        // Si même avec notre échelle la signature est trop large, réduire davantage
+        if (scaleByWidth.width > MAX_WIDTH) {
+          finalScale = scale * (MAX_WIDTH / scaleByWidth.width);
+        }
+
+        const signatureDims = signatureImage.scale(finalScale);
+
+        // D'abord dessiner l'image de signature
+        page.drawText(`Signature du ${nomFonctionPersonnel}`, {
+          x: pageWidth - margin - 200,
+          y: signatureY - 15,
+          size: fontSize,
+          font: mainFont,
+        });
+
+        // Afficher le nom et prénom en gras après le texte fonction, mais avant l'image
+        page.drawText(`${nomPersonnel} ${prenomPersonnel}`, {
+          x: pageWidth - margin - 200,
+          y: signatureY - 27,
+          size: fontSize,
+          font: boldFont,
+        });
+
+        // Puis dessiner l'image de signature sous les textes
+        page.drawImage(signatureImage, {
+          x: pageWidth - margin - 200,
+          y: signatureY - 40 - signatureDims.height,
+          width: signatureDims.width,
+          height: signatureDims.height,
+        });
+      } catch (error) {
+        console.error(
+          `Erreur lors du chargement de l'image de signature ${signatureFilename}:`,
+          error
+        );
+
+        // En cas d'erreur, revenir à la signature textuelle
+        page.drawText(`Signature du: ${nomFonctionPersonnel}`, {
+          x: pageWidth - margin - 200,
+          y: signatureY - 10,
+          size: fontSize,
+          font: mainFont,
+        });
+
+        page.drawText(`${nomPersonnel} ${prenomPersonnel}`, {
+          x: pageWidth - margin - 200,
+          y: signatureY - 22,
+          size: fontSize,
+          font: boldFont,
+        });
+
+        // Afficher le code personnel
+        page.drawText(`Code personnel: ${codePersonnelGestionnaire}`, {
+          x: pageWidth - margin - 200,
+          y: signatureY - 34,
+          size: fontSize,
+          font: mainFont,
+        });
+      }
+    } else {
+      // Pour les codes personnels sans signature, afficher uniquement le texte
+      page.drawText(`Signature du: ${nomFonctionPersonnel}`, {
+        x: pageWidth - margin - 200,
+        y: signatureY - 10,
+        size: fontSize,
+        font: mainFont,
+      });
+
+      page.drawText(`${nomPersonnel} ${prenomPersonnel}`, {
+        x: pageWidth - margin - 200,
+        y: signatureY - 22,
+        size: fontSize,
+        font: boldFont,
+      });
+    }
 
     // Information sur la validité
     const validiteY = 50;
     page.drawText("VA : Validé / NV : Non Validé / C: Compensation / R: Rattrapage", {
       x: margin,
       y: validiteY,
-      size: 8,
+      size: 7,
       font: mainFont,
       color: rgb(0.5, 0.5, 0.5),
     });
@@ -1479,17 +1672,32 @@ export async function POST(request: Request) {
           data.MOYENNES_UE || [],
           data.MOYENNE_GENERALE || [],
           data.OBSERVATIONS || [],
-          updatedSubjects, // ✅ Utilisation des matières avec ECTS mis à jour
+          updatedSubjects,
           data.GROUPE || [],
           data.SITE || [],
           period,
           data.ABSENCE || [],
-          processAbsences(data.ABSENCE || [])
+          processAbsences(data.ABSENCE || []),
+          data.PERSONNEL || [] // Add this line to pass the PERSONNEL data
         );
 
         console.log("📌 Matières brutes reçues :", data.ECTS_PAR_MATIERE);
 
-        const filename = `${student.NOM_APPRENANT}_${student.PRENOM_APPRENANT}.pdf`;
+        // Par le code suivant:
+        // Récupérer le nom de la formation à partir des données du groupe
+        let nomFormation = "FORMATION";
+        if (data.GROUPE && data.GROUPE.length > 0 && data.GROUPE[0].NOM_FORMATION) {
+          nomFormation = data.GROUPE[0].NOM_FORMATION.replace(/\s+/g, "_").replace(
+            /[^a-zA-Z0-9_-]/g,
+            ""
+          );
+        }
+
+        // Nettoyer la période d'évaluation
+        const periodClean = period.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
+
+        // Générer le nom de fichier au format demandé
+        const filename = `2024-2025_${nomFormation}_${periodClean}_${student.NOM_APPRENANT}_${student.PRENOM_APPRENANT}.pdf`;
 
         // Add PDF to the zip file (in memory)
         zip.file(filename, pdfBytes);
