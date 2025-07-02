@@ -44,16 +44,6 @@ export const faqItems = [
       "Vous devez fournir un fichier Excel contenant les données des apprenants (notes, absences, etc.) et un fichier Word contenant les appréciations des étudiants. Ces fichiers seront utilisés pour générer les bulletins PDF.",
   },
   {
-    question: "Comment générer les bulletins de notes ?",
-    answer:
-      "Une fois connecté, cliquez sur le bouton Générer vos bulletins. Vous accéderez à une page où vous pourrez déposer vos documents Excel et Word. Le processus de génération commencera automatiquement.",
-  },
-  {
-    question: "Comment suivre la progression de la génération des bulletins ?",
-    answer:
-      "Pendant la génération des bulletins, une barre de progression sera affichée à l'écran. Vous pourrez ainsi suivre en temps réel l'avancement du processus.",
-  },
-  {
     question: "Où puis-je récupérer les bulletins après leur génération ?",
     answer:
       "Une fois la génération terminée, vous aurez la possibilité de télécharger tous les bulletins sous forme de fichier ZIP en cliquant sur le lien de téléchargement qui apparaîtra à l'écran.",
@@ -67,10 +57,5 @@ export const faqItems = [
     question: "Que faire en cas d'erreurs lors de la génération ou de l'importation ?",
     answer:
       "Si une erreur se produit, un message d&apos;erreur apparaîtra avec des détails. Pour résoudre le problème, contactez le support technique.",
-  },
-  {
-    question: "Comment savoir si l'importation a réussi ?",
-    answer:
-      "Après l'importation, un message de confirmation s&apos;affichera si tout est bien passé. Vous pouvez également vérifier dans Yparéo que les bulletins sont bien associés aux apprenants concernés.",
   },
 ];

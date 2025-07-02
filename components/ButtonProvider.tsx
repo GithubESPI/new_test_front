@@ -24,7 +24,7 @@ const ButtonsProvider = () => {
       <div className="flex flex-col space-y-4">
         <Button
           onClick={() => handleSignIn("azure-ad")}
-          className="w-full bg-primary-50 p-6 flex items-center justify-center"
+          className="w-full bg-primary-50 flex items-center justify-center border border-bg-primary-50 rounded-md p-6 mb-6  transition hover:bg-third-50"
           disabled={loading}
         >
           {loading ? (

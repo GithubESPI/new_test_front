@@ -110,20 +110,12 @@ const config: Config = {
   					height: '0'
   				}
   			},
-  			'accordion-down': {
-  				from: {
-  					height: '0'
+  			'shiny-text': {
+  				'0%, 90%, 100%': {
+  					'background-position': 'calc(-100% - var(--shiny-width)) 0'
   				},
-  				to: {
-  					height: 'var(--radix-accordion-content-height)'
-  				}
-  			},
-  			'accordion-up': {
-  				from: {
-  					height: 'var(--radix-accordion-content-height)'
-  				},
-  				to: {
-  					height: '0'
+  				'30%, 60%': {
+  					'background-position': 'calc(100% + var(--shiny-width)) 0'
   				}
   			}
   		},
@@ -133,8 +125,7 @@ const config: Config = {
   			flashing: 'flashing 1.4s infinite linear',
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out',
-  			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'shiny-text': 'shiny-text 8s infinite'
   		}
   	}
   },

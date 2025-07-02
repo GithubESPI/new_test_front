@@ -19,7 +19,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -407,61 +406,36 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen form-background flex flex-col items-center justify-center gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-[#0a5d81]" />
-        <p className="text-gray-600 font-medium">Chargement des données...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-slate-50 grainy-light">
+        <Loader2 className="h-6 w-6 animate-spin text-[#0a5d81]" />
+        <p className="font-sm text-gray-600">Chargement des données...</p>
       </div>
     );
   }
 
   return (
     <>
-      <div className="min-h-screen form-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-2xl mx-4 card-shadow border-0">
-          <CardHeader className="space-y-4 pb-8">
-            <div className="flex justify-center">
-              <div className="bg-wtm-button-linear rounded-full p-4">
-                <School className="w-10 h-10 text-white" />
+      <div className="min-h-screen bg-slate-50 grainy-light flex items-center justify-center p-3">
+        <Card className="w-full max-w-lg mx-4 shadow-none">
+          <CardHeader className="pb-4 px-8">
+            <div className="flex justify-center mb-2">
+              <div className="bg-gradient-to-r from-[#0a5d81] to-[#003349] rounded-full p-3">
+                <School className="w-6 h-6 text-white" />
               </div>
             </div>
-            <div className="space-y-2">
-              <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-[#0a5d81] to-[#003349] bg-clip-text text-transparent">
-                Créer vos bulletins
-              </CardTitle>
-              <p className="text-center text-gray-600">
-                Remplissez le formulaire pour générer vos bulletins de notes
-              </p>
-            </div>
+            <CardTitle className="text-2xl font-bold text-center bg-gradient-to-r from-[#0a5d81] to-[#003349] bg-clip-text text-transparent">
+              Choisir les bulletins à éditer
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-lg font-semibold text-gray-700">
-                        Nom/Prénom
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Nom et prénom"
-                          {...field}
-                          className="h-12 text-lg border-2 focus:border-[#0a5d81] transition-colors"
-                          value={field.value || ""} // Assurer qu'il y a toujours une valeur
-                        />
-                      </FormControl>
-                      <FormMessage className="text-red-500" />
-                    </FormItem>
-                  )}
-                />
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
                   control={form.control}
                   name="campus"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-lg font-semibold text-gray-700">Campus</FormLabel>
+                      <FormLabel className="text-md font-semibold text-gray-700">Campus</FormLabel>
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value);
@@ -470,13 +444,13 @@ export default function Home() {
                         value={field.value}
                       >
                         <FormControl>
-                          <SelectTrigger className="h-12 text-lg border-2 focus:border-[#0a5d81]">
+                          <SelectTrigger className="h-10 text-sm border-2 focus:border-[#0a5d81]">
                             <SelectValue placeholder="Sélectionnez un campus" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {campuses.map((campus) => (
-                            <SelectItem key={campus.id} value={campus.id} className="text-base">
+                            <SelectItem key={campus.id} value={campus.id} className="text-sm">
                               {campus.label}
                             </SelectItem>
                           ))}
@@ -491,10 +465,10 @@ export default function Home() {
                   name="group"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-lg font-semibold text-gray-700">Groupes</FormLabel>
+                      <FormLabel className="text-md font-semibold text-gray-700">Groupe</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger className="h-12 text-lg border-2 focus:border-[#0a5d81]">
+                          <SelectTrigger className="h-10 text-sm border-2 focus:border-[#0a5d81]">
                             <SelectValue placeholder="Sélectionnez un groupe" />
                           </SelectTrigger>
                         </FormControl>
@@ -503,7 +477,7 @@ export default function Home() {
                             <SelectItem
                               key={group.id}
                               value={group.id.toString()}
-                              className="text-base"
+                              className="text-sm"
                             >
                               {group.label}
                             </SelectItem>
@@ -520,7 +494,7 @@ export default function Home() {
                   name="semester"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-lg font-semibold text-gray-700">
+                      <FormLabel className="text-md font-semibold text-gray-700">
                         Période d&apos;évaluation
                       </FormLabel>
                       <Select
@@ -546,7 +520,7 @@ export default function Home() {
                         value={field.value}
                       >
                         <FormControl>
-                          <SelectTrigger className="h-12 text-lg border-2 focus:border-[#0a5d81]">
+                          <SelectTrigger className="h-10 text-sm border-2 focus:border-[#0a5d81]">
                             <SelectValue placeholder="Sélectionnez une période" />
                           </SelectTrigger>
                         </FormControl>
@@ -555,7 +529,7 @@ export default function Home() {
                             <SelectItem
                               key={period.CODE_PERIODE_EVALUATION}
                               value={period.CODE_PERIODE_EVALUATION}
-                              className="text-base"
+                              className="text-sm"
                             >
                               {period.NOM_PERIODE_EVALUATION}
                             </SelectItem>
@@ -568,15 +542,15 @@ export default function Home() {
                 />
                 <Button
                   type="submit"
-                  className="w-full h-12 text-lg font-semibold bg-wtm-button-linear hover:bg-wtm-button-linear-reverse transition-all duration-300 flex items-center justify-center gap-2"
+                  className="w-full h-10 text-sm font-bold bg-gradient-to-r from-[#0a5d81] to-[#003349] hover:bg-wtm-button-linear-reverse transition-all duration-300 flex items-center justify-center gap-2 mt-2"
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <FileText className="w-5 h-5" />
+                    <FileText className="w-4 h-4" />
                   )}
-                  {isSubmitting ? "Chargement..." : "Confirmer le choix de mon groupe"}
+                  {isSubmitting ? "Chargement..." : "Confirmer mon choix"}
                 </Button>
               </form>
             </Form>
@@ -584,7 +558,6 @@ export default function Home() {
         </Card>
       </div>
 
-      {/* Modale de succès */}
       {/* Modale de succès */}
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="sm:max-w-md">

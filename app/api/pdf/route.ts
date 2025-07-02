@@ -23,6 +23,7 @@ interface StudentGrade {
   CODE_MATIERE: string;
   NOM_MATIERE: string;
   MOYENNE: number;
+  NOM_PERIODE_EVALUATION: string;
   [key: string]: any;
 }
 
@@ -463,7 +464,6 @@ async function createStudentPDF(
     // Calculer pour chaque matière si elle est en rattrapage (R) en fonction de sa moyenne
     const matiereEtats = new Map<string, string>();
     // Initialiser la map pour contenir les états de UE qui ont des matières en rattrapage
-    const ueContientR = new Map<string, boolean>();
 
     // 1. D'abord, calculer les états initiaux pour les matières avec moyenne < 8 ou >= 10
     for (const grade of studentGrades) {
@@ -472,26 +472,70 @@ async function createStudentPDF(
         if (moyenneValue >= 10) {
           matiereEtats.set(grade.CODE_MATIERE, "VA");
         } else if (moyenneValue < 8) {
-          matiereEtats.set(grade.CODE_MATIERE, "R");
+          matiereEtats.set(grade.CODE_MATIERE, "NV");
         }
       }
     }
 
     // 2. Déterminer si les UE contiennent des matières en rattrapage
-    for (const [ueCode, { matieres }] of ueMap) {
-      const contientR = matieres.some((m) => {
-        const moyenneValue = parseFloat(m.MOYENNE.toString().replace(",", "."));
-        return moyenneValue < 8;
-      });
-      ueContientR.set(ueCode, contientR);
+    for (const grade of studentGrades) {
+      const moyenneValue = parseFloat(grade.MOYENNE.toString().replace(",", "."));
+      if (!grade.NOM_MATIERE.startsWith("UE") && moyenneValue >= 8 && moyenneValue < 10) {
+        matiereEtats.set(grade.CODE_MATIERE, "TEMP_8_10");
+      }
     }
 
     // 3. Finaliser les états des matières avec 8 <= moyenne < 10
     for (const [ueCode, { matieres }] of ueMap) {
+      // Compter les matières par catégorie
+      let countR = 0; // Nombre de matières en rattrapage (< 8)
+      let count8_10 = 0; // Nombre de matières entre 8 et 10
+      let countVA = 0; // Nombre de matières validées (≥ 10)
+
       for (const matiere of matieres) {
-        const moyenneValue = parseFloat(matiere.MOYENNE.toString().replace(",", "."));
-        if (moyenneValue >= 8 && moyenneValue < 10) {
-          matiereEtats.set(matiere.CODE_MATIERE, ueContientR.get(ueCode) ? "R" : "C");
+        const etat = matiereEtats.get(matiere.CODE_MATIERE);
+        if (etat === "NV") countR++;
+        else if (etat === "TEMP_8_10") count8_10++;
+        else if (etat === "VA") countVA++;
+      }
+
+      console.log(
+        `UE ${ueCode}: Matières(total=${matieres.length}, VA=${countVA}, 8-10=${count8_10}, R=${countR})`
+      );
+
+      // Cas où il y a des matières entre 8 et 10
+      if (count8_10 > 0) {
+        if (countR > 0) {
+          // Si l'UE contient au moins une matière en rattrapage,
+          // toutes les matières entre 8 et 10 passent en rattrapage
+          for (const matiere of matieres) {
+            if (matiereEtats.get(matiere.CODE_MATIERE) === "TEMP_8_10") {
+              matiereEtats.set(matiere.CODE_MATIERE, "NV");
+              console.log(`Matière ${matiere.NOM_MATIERE}: mise en R car UE contient des R`);
+            }
+          }
+        } else if (matieres.length === 1 && count8_10 === 1) {
+          // Cas d'une UE avec une seule matière entre 8 et 10 : pas de compensation possible
+          const matiere = matieres[0];
+          matiereEtats.set(matiere.CODE_MATIERE, "NV");
+          console.log(`Matière ${matiere.NOM_MATIERE}: mise en R car UE n'a qu'une seule matière`);
+        } else if (countVA >= 1 && count8_10 === 1) {
+          // Cas d'une UE avec plusieurs matières dont une seule entre 8 et 10
+          // et au moins une validée : compensation possible
+          for (const matiere of matieres) {
+            if (matiereEtats.get(matiere.CODE_MATIERE) === "TEMP_8_10") {
+              matiereEtats.set(matiere.CODE_MATIERE, "C");
+              console.log(`Matière ${matiere.NOM_MATIERE}: mise en C car UE contient des VA`);
+            }
+          }
+        } else {
+          // Autres cas : par défaut, mettre en rattrapage
+          for (const matiere of matieres) {
+            if (matiereEtats.get(matiere.CODE_MATIERE) === "TEMP_8_10") {
+              matiereEtats.set(matiere.CODE_MATIERE, "NV");
+              console.log(`Matière ${matiere.NOM_MATIERE}: mise en R (cas par défaut)`);
+            }
+          }
         }
       }
     }
@@ -509,7 +553,7 @@ async function createStudentPDF(
       if (subject.CODE_APPRENANT === student.CODE_APPRENANT) {
         const etat = matiereEtats.get(subject.CODE_MATIERE);
         // Si la matière est en rattrapage et n'est pas une UE, mettre son ECTS à 0
-        if (etat === "R" && !subject.NOM_MATIERE.startsWith("UE")) {
+        if (etat === "NV" && !subject.NOM_MATIERE.startsWith("UE")) {
           console.log(`Mise à jour ECTS à 0 pour matière en rattrapage: ${subject.NOM_MATIERE}`);
           subject.CREDIT_ECTS = 0;
         }
@@ -581,30 +625,32 @@ async function createStudentPDF(
       const moyenneUE = parseFloat(ue.MOYENNE.toString().replace(",", "."));
       const moyenneValide = !isNaN(moyenneUE) && moyenneUE >= 10;
 
-      // Compter les matières avec l'état "C" et "R"
-      let countC = 0;
+      // Compter les matières par état
       let countR = 0;
+      let countC = 0;
+      let countVA = 0;
 
-      // Vérifier les états des matières
       for (const matiere of matieres) {
         const etat = matiereEtats.get(matiere.CODE_MATIERE);
-        if (etat === "C") countC++;
-        if (etat === "R") countR++;
+        if (etat === "NV") countR++;
+        else if (etat === "C") countC++;
+        else if (etat === "VA") countVA++;
       }
 
-      // Règle spéciale: Si une seule matière en état "C", aucune en "R", et UE < 10 => UE est "VA"
-      const specialRule = countC === 1 && countR === 0 && matieres.length === 1 && moyenneUE < 10;
+      // Règle 1: UE validée si sa moyenne ≥ 10 et aucune matière en rattrapage
+      const regle1 = moyenneValide && countR === 0;
 
-      // Règle standard: UE est "VA" si moyenne ≥ 10 ET aucune matière R ou C
-      const standardRule = moyenneValide && countC + countR === 0;
+      // Règle 2: UE validée si elle a plusieurs matières, dont une en compensation et les autres validées
+      const regle2 = matieres.length > 1 && countC === 1 && countR === 0 && countVA >= 1;
 
       // Appliquer les règles
-      ueEtats.set(ueCode, standardRule || specialRule ? "VA" : "NV");
+      const estValidee = regle1 || regle2;
+      ueEtats.set(ueCode, estValidee ? "VA" : "NV");
 
       // Log pour le débogage
       console.log(
         `UE ${ue.NOM_MATIERE}: Moyenne=${moyenneUE}, MatièresC=${countC}, MatièresR=${countR}, ` +
-          `RègleSpéciale=${specialRule}, RègleStandard=${standardRule}, Etat=${ueEtats.get(ueCode)}`
+          `MatièresVA=${countVA}, Règle1=${regle1}, Règle2=${regle2}, Etat=${ueEtats.get(ueCode)}`
       );
     }
 
@@ -616,9 +662,11 @@ async function createStudentPDF(
       const logoImage = await pdfDoc.embedJpg(logoBytes);
 
       // Obtenir les dimensions de l'image
-      const logoDims = logoImage.scale(0.2); // Ajustez l'échelle selon vos besoins
+      const logoDims = logoImage.scale(0.25); // Ajustez l'échelle selon vos besoins
 
-      // Dessiner le logo ESPI
+      // Positionner le logo plus haut
+      currentY = pageHeight - margin / 2; // Ajuster pour positionner plus haut
+
       page.drawImage(logoImage, {
         x: margin,
         y: currentY - logoDims.height,
@@ -645,7 +693,7 @@ async function createStudentPDF(
     const espiGray = rgb(0.925, 0.925, 0.925);
 
     // Identifiant de l'étudiant
-    currentY -= 30;
+    currentY -= 10;
     page.drawText(`Identifiant : ${student.CODE_APPRENANT}`, {
       x: pageWidth - margin - 150,
       y: currentY,
@@ -655,8 +703,7 @@ async function createStudentPDF(
     });
 
     // Titre du bulletin
-    // Titre du bulletin
-    currentY -= 20;
+    currentY -= 10;
     const bulletinTitle = "Bulletin de notes 2024-2025";
     const bulletinTitleWidth = boldFont.widthOfTextAtSize(bulletinTitle, fontSizeTitle);
     page.drawText(bulletinTitle, {
@@ -981,13 +1028,11 @@ async function createStudentPDF(
       }
 
       // Sélectionner la police et la couleur en fonction de l'état
-      const etatFont = isUE ? boldFont : etat === "R" || etat === "C" ? boldFont : mainFont;
+      const etatFont = isUE ? boldFont : etat === "C" ? boldFont : mainFont;
 
       // Déterminer la couleur selon l'état
       let etatColor;
-      if (etat === "R") {
-        etatColor = rgb(0.93, 0.43, 0.41); // #ed6d68 en RGB pour "R"
-      } else if (etat === "C") {
+      if (etat === "C") {
         etatColor = rgb(0.04, 0.36, 0.51); // #0a5d81 en RGB pour "C"
       } else {
         etatColor = rgb(0, 0, 0); // Noir pour les autres états
@@ -1263,6 +1308,57 @@ async function createStudentPDF(
         font: mainFont,
         color: espiBlue,
       });
+    } else {
+      // SI AUCUNE ABSENCE N'EST TROUVÉE, AFFICHER LES VALEURS PAR DÉFAUT
+      // Titre "Absences justifiées" dans la première colonne
+      page.drawText("Absences justifiées", {
+        x: margin + boxWidthABS / 6 - 40, // Centré dans la colonne
+        y: currentY - 15,
+        size: fontSize,
+        font: mainFont,
+        color: espiBlue,
+      });
+
+      page.drawText("00h00", {
+        x: margin + boxWidthABS / 6 - 10, // Centré dans la colonne
+        y: currentY - 30,
+        size: fontSize,
+        font: mainFont,
+        color: espiBlue,
+      });
+
+      // Titre "Absences injustifiées" dans la deuxième colonne
+      page.drawText("Absences injustifiées", {
+        x: margin + boxWidthABS / 2 - 45, // Centré dans la colonne
+        y: currentY - 15,
+        size: fontSize,
+        font: mainFont,
+        color: espiBlue,
+      });
+
+      page.drawText("00h00", {
+        x: margin + boxWidthABS / 2 - 10, // Centré dans la colonne
+        y: currentY - 30,
+        size: fontSize,
+        font: mainFont,
+        color: espiBlue,
+      });
+
+      page.drawText("Retards", {
+        x: margin + (5 * boxWidthABS) / 6 - 20, // Centré dans la colonne
+        y: currentY - 15,
+        size: fontSize,
+        font: mainFont,
+        color: espiBlue,
+      });
+
+      page.drawText("00h00", {
+        x: margin + (5 * boxWidthABS) / 6 - 10, // Centré dans la colonne
+        y: currentY - 30,
+        size: fontSize,
+        font: mainFont,
+        color: espiBlue,
+      });
     }
 
     currentY -= boxHeightABS + 20;
@@ -1342,8 +1438,19 @@ async function createStudentPDF(
       }
     }
 
-    // Pied de page avec signature
-    const signatureY = 135;
+    currentY -= 25; // Espace additionnel
+
+    // Vérifier s'il reste assez d'espace pour la signature
+    const MIN_SPACE_FOR_SIGNATURE = 100;
+    if (currentY < margin + MIN_SPACE_FOR_SIGNATURE) {
+      // Pas assez d'espace, créer une nouvelle page
+      page = pdfDoc.addPage([595.28, 841.89]);
+      currentY = pageHeight - margin;
+    }
+
+    // Placer la signature à la position courante
+    const signatureY = currentY;
+
     // Texte du lieu et de la date
     page.drawText(
       `Fait à ${campus ? campus.NOM_SITE : "Paris"}, le ${new Date().toLocaleDateString("fr-FR")}`,
@@ -1468,8 +1575,9 @@ async function createStudentPDF(
           font: mainFont,
         });
 
-        // Afficher le nom et prénom en gras après le texte fonction, mais avant l'image
-        page.drawText(`${nomPersonnel} ${prenomPersonnel}`, {
+        // Afficher le prénom et nom inversés en gras après le texte fonction, mais avant l'image
+        page.drawText(`${prenomPersonnel} ${nomPersonnel}`, {
+          // Inverser nom et prénom
           x: pageWidth - margin - 200,
           y: signatureY - 27,
           size: fontSize,
@@ -1497,7 +1605,8 @@ async function createStudentPDF(
           font: mainFont,
         });
 
-        page.drawText(`${nomPersonnel} ${prenomPersonnel}`, {
+        page.drawText(`${prenomPersonnel} ${nomPersonnel}`, {
+          // Inverser nom et prénom
           x: pageWidth - margin - 200,
           y: signatureY - 22,
           size: fontSize,
@@ -1521,7 +1630,8 @@ async function createStudentPDF(
         font: mainFont,
       });
 
-      page.drawText(`${nomPersonnel} ${prenomPersonnel}`, {
+      page.drawText(`${prenomPersonnel} ${nomPersonnel}`, {
+        // Inverser nom et prénom
         x: pageWidth - margin - 200,
         y: signatureY - 22,
         size: fontSize,
@@ -1529,11 +1639,12 @@ async function createStudentPDF(
       });
     }
 
-    // Information sur la validité
-    const validiteY = 50;
-    page.drawText("VA : Validé / NV : Non Validé / C: Compensation / R: Rattrapage", {
+    // Déplacer la légende en pied de page
+    const footerY = 25; // Position plus basse pour la légende
+    page.drawText("VA : Validé / NV : Non Validé / C : Compensation", {
+      // Ajout d'espaces avant les deux points
       x: margin,
-      y: validiteY,
+      y: footerY,
       size: 7,
       font: mainFont,
       color: rgb(0.5, 0.5, 0.5),
@@ -1633,10 +1744,10 @@ export async function POST(request: Request) {
 
     // Utiliser les données MATIERE si disponibles, sinon ECTS_PAR_MATIERE
     const sourceMatieres = data.MATIERE || data.ECTS_PAR_MATIERE || [];
-    // Appliquer la règle : si une matière avec CODE_TYPE_MATIERE "3" a un état "R", ses ECTS passent à 0
+    // Appliquer la règle : si une matière avec CODE_TYPE_MATIERE "3" a un état "NV", ses ECTS passent à 0
     sourceMatieres.forEach((matiere: any) => {
       // Vérifier si la matière est en rattrapage
-      if (matiere.CODE_TYPE_MATIERE !== "2" && matiere.ETAT === "R") {
+      if (matiere.CODE_TYPE_MATIERE !== "2" && matiere.ETAT === "NV") {
         matiere.CREDIT_ECTS = 0; // Annuler les crédits si la matière est en rattrapage
         console.log(
           `Matière en rattrapage: ${matiere.NOM_MATIERE}, État: ${matiere.ETAT}, ECTS mis à 0`
@@ -1727,11 +1838,42 @@ export async function POST(request: Request) {
     const zipBuffer = await zip.generateAsync({ type: "arraybuffer" });
     console.log("ZIP généré avec succès");
 
-    // Créer un ID unique pour le fichier
-    // Créer un ID unique pour le fichier
-    const sanitizedGroupName = groupName.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
-    const timestamp = Date.now();
-    const zipId = `bulletins_${sanitizedGroupName}_${timestamp}.zip`;
+    let groupNameForFilename = groupName; // Valeur par défaut
+    let periodNameForFilename = period; // Valeur par défaut
+
+    // Essayer de récupérer NOM_PERIODE_EVALUATION depuis les données des notes
+    if (data.MOYENNES_UE && data.MOYENNES_UE.length > 0) {
+      // Vérifier si le champ existe dans les données
+      const sampleGrade = data.MOYENNES_UE[0];
+      console.log("Exemple de données MOYENNES_UE:", sampleGrade);
+
+      if (sampleGrade.NOM_PERIODE_EVALUATION) {
+        periodNameForFilename = sampleGrade.NOM_PERIODE_EVALUATION;
+        console.log(`NOM_PERIODE_EVALUATION trouvé: "${periodNameForFilename}"`);
+      } else {
+        console.log("NOM_PERIODE_EVALUATION non trouvé dans les données MOYENNES_UE");
+        // Lister toutes les clés disponibles pour aider au débogage
+        console.log("Clés disponibles:", Object.keys(sampleGrade));
+      }
+    }
+
+    // 2. Récupérer le nom du groupe depuis les données
+    if (data.GROUPE && data.GROUPE.length > 0) {
+      groupNameForFilename = data.GROUPE[0].NOM_GROUPE || groupName;
+      console.log(`NOM_GROUPE trouvé: "${groupNameForFilename}"`);
+    }
+
+    // Nettoyer et formater les variables du nom de groupe et de période
+    // 3. Nettoyer et formater les valeurs pour le nom du fichier
+    const sanitizedGroupName = groupNameForFilename
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+    const sanitizedPeriod = periodNameForFilename
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+
+    // Créer le nom du fichier ZIP avec le format demandé: bulletins_NOM_GROUPE_NOM_PERIODE_EVALUATION.zip
+    const zipId = `bulletins_${sanitizedGroupName}_${sanitizedPeriod}.zip`;
 
     console.log(`ID du fichier ZIP généré: ${zipId}`);
 
